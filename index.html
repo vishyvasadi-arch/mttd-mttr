@@ -140,7 +140,7 @@ td{padding:7px 10px;vertical-align:middle;color:#1a1a2e}
 </header>
 <div class="infobar">
   <div class="info-item"><span class="info-label" style="color:#2563eb">MTTD</span><span class="info-desc">· Calendar time · Detection → Acknowledgement · All hours including weekends</span></div>
-  <div class="info-item"><span class="info-label" style="color:#0891b2">MTTR</span><span class="info-desc">· Business hours only · Mail Sent → Response · Mon–Fri 08:00–20:00 IST</span></div>
+  <div class="info-item"><span class="info-label" style="color:#0891b2">MTTR</span><span class="info-desc">· Mon–Fri 08:00–20:00 · Sat 08:00–10:00 · Off-hours sent = raw diff · Sunday excluded</span></div>
   <div class="info-item"><span class="info-label" style="color:#059669">PRECISION</span><span class="info-desc">· Seconds-level accuracy · Days / Hours / Minutes / Seconds breakdown</span></div>
 </div>
 <div class="main">
@@ -178,7 +178,7 @@ td{padding:7px 10px;vertical-align:middle;color:#1a1a2e}
 </div>
 <div class="footer">
   <span>SLA Console · MTTD &amp; MTTR Automation · IST Timezone</span>
-  <span>Business Hours: Mon–Fri 08:00–20:00 · Weekends excluded from MTTR · Seconds-level precision</span>
+  <span>Business Hours: Mon–Fri 08:00–20:00 · Sat 08:00–10:00 · Sun excluded · Off-hours sent = raw diff</span>
 </div>
 <div class="modal-overlay hidden" id="teamModal">
   <div class="modal">
@@ -236,38 +236,140 @@ function fmtShort(d){if(!d||isNaN(d))return '—';return d.toLocaleString('en-IN
 function toInputVal(d){if(!d||isNaN(d))return '';const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
 // ── CALCULATIONS (seconds-level) ─────────────────────────────────────────────
 const BIZ_S=8,BIZ_E=20,BIZ_HPD=BIZ_E-BIZ_S;
+const SAT_S=8,SAT_E=10; // Saturday 08:00–10:00 counts
 const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const isSunday=d=>d.getDay()===0;
+const isSaturday=d=>d.getDay()===6;
 const isWknd=d=>d.getDay()===0||d.getDay()===6;
-function nextBizDay(d){const n=new Date(d);n.setDate(n.getDate()+1);n.setHours(BIZ_S,0,0,0);while(isWknd(n))n.setDate(n.getDate()+1);return n;}
-function calcBizSecs(s,e){
-  if(!s||!e||isNaN(s)||isNaN(e)||e<=s)return 0;
-  let cur=new Date(s),tot=0;
-  while(isWknd(cur))cur=nextBizDay(cur);
-  const sh=cur.getHours()+cur.getMinutes()/60+cur.getSeconds()/3600;
-  if(sh<BIZ_S)cur.setHours(BIZ_S,0,0,0);
-  else if(sh>=BIZ_E)cur=nextBizDay(cur);
+
+// Returns seconds-of-day for a Date
+function sod(d){return d.getHours()*3600+d.getMinutes()*60+d.getSeconds();}
+
+// Is a given Date inside any countable window?
+// Mon–Fri 08:00–20:00 always counts.
+// Sat 08:00–10:00 counts.
+// Outside those windows also counts IF the sent time itself was outside business hours.
+function isInBizWindow(d){
+  if(isSunday(d))return false;
+  if(isSaturday(d)){const s=sod(d);return s>=SAT_S*3600&&s<SAT_E*3600;}
+  const s=sod(d);return s>=BIZ_S*3600&&s<BIZ_E*3600;
+}
+
+// How many countable seconds does day d contribute between [from, to] (both Date)?
+// windowStart/windowEnd are seconds-of-day for that day's counting window.
+function secsInWindow(from,to,winS,winE){
+  // from and to clamped to [winS,winE] in seconds-of-day
+  const fS=sod(from),tS=sod(to);
+  const a=Math.max(fS,winS),b=Math.min(tS,winE);
+  return Math.max(0,b-a);
+}
+
+// Next day at 00:00:00
+function nextDay(d){const n=new Date(d);n.setDate(n.getDate()+1);n.setHours(0,0,0,0);return n;}
+
+function calcBizSecs(start,end){
+  if(!start||!end||isNaN(start)||isNaN(end)||end<=start)return 0;
+
+  const sentInBiz=isInBizWindow(start); // was sent during a countable window?
+
+  // ── RULE: If sent AND response are both outside all counting windows
+  //    → return raw wall-clock diff (no filtering at all)
+  // We detect this by checking if start is outside biz AND end is outside biz
+  // and they are on the same day or contiguous off-hours span.
+  // Simplest approach: if sent is NOT in any biz window, use raw diff.
+  if(!sentInBiz){
+    // Sent outside business/Saturday hours → raw actual diff
+    return Math.round((end-start)/1000);
+  }
+
+  // ── RULE: Sent inside biz hours → count biz/Saturday seconds until response
+  // But if response is AFTER the biz window closes on that day (or any day),
+  // we count right up to response time (full raw diff from sent).
+  // This covers: sent 19:30 → response 21:30 = full 2hrs.
+  // We do this by counting biz-window seconds day by day, PLUS
+  // any after-hours seconds on the FINAL day (response day) if response > window end.
+
+  let tot=0;
+  let cur=new Date(start);
+
   for(let g=0;g<10000;g++){
-    if(isWknd(cur)){cur=nextBizDay(cur);continue;}
-    if(cur>=e)break;
-    if(cur.toDateString()===e.toDateString()){
-      const s2=cur.getHours()*3600+cur.getMinutes()*60+cur.getSeconds();
-      const eH=e.getHours()*3600+e.getMinutes()*60+e.getSeconds();
-      tot+=Math.max(0,Math.min(eH,BIZ_E*3600)-s2);break;
+    if(cur>=end)break;
+
+    const day=cur.getDay();
+    const isSun=day===0;
+    const isSat=day===6;
+    const isMon_Fri=day>=1&&day<=5;
+
+    // Determine this day's countable window (seconds-of-day)
+    let winS,winE;
+    if(isSun){
+      // Sunday fully excluded — skip to Monday 00:00
+      const n=new Date(cur);n.setDate(n.getDate()+1);n.setHours(0,0,0,0);
+      cur=n;continue;
+    }else if(isSat){
+      winS=SAT_S*3600;winE=SAT_E*3600;
     }else{
-      const s2=cur.getHours()*3600+cur.getMinutes()*60+cur.getSeconds();
-      tot+=Math.max(0,BIZ_E*3600-s2);cur=nextBizDay(cur);
+      winS=BIZ_S*3600;winE=BIZ_E*3600;
+    }
+
+    const startOfNextDay=nextDay(cur);
+    const isLastDay=cur.toDateString()===end.toDateString();
+    const periodEnd=isLastDay?end:startOfNextDay;
+
+    if(isLastDay){
+      // On the response day:
+      // Count biz-window seconds normally PLUS any extra after-window seconds
+      // (handles sent-in-hours → response after-hours = full raw diff)
+      const fromSod=sod(cur);
+      const toSod=sod(end);
+
+      if(toSod>winE){
+        // Response is after the window end on this day
+        // Count: from cur to window end (biz portion) + window end to response (after-hours portion)
+        // = effectively the full diff from cur to end
+        tot+=Math.max(0,sod(end)-sod(cur));
+      }else{
+        // Response is within or before window — count only what's in window
+        const a=Math.max(sod(cur),winS);
+        const b=Math.min(toSod,winE);
+        tot+=Math.max(0,b-a);
+      }
+      break;
+    }else{
+      // Not the last day — count only the biz window portion for this day
+      const a=Math.max(sod(cur),winS);
+      tot+=Math.max(0,winE-a);
+      cur=startOfNextDay;
     }
   }
   return Math.round(tot);
 }
 function calcCalSecs(s,e){if(!s||!e||isNaN(s)||isNaN(e)||e<=s)return 0;return Math.round((e-s)/1000);}
 function fmtSecs(totalSecs,bizOnly){
-  if(totalSecs<=0)return{text:'0s',d:0,h:0,m:0,s:0,total:totalSecs,mins:0};
+  if(totalSecs<=0)return{text:'0s',hhmmss:'00:00:00',long:'0 seconds',d:0,h:0,m:0,s:0,total:0,mins:0,totalHours:'0.00'};
   const secsPerDay=bizOnly?BIZ_HPD*3600:86400;
-  const d=Math.floor(totalSecs/secsPerDay);let rem=totalSecs%secsPerDay;
-  const h=Math.floor(rem/3600);rem%=3600;const m=Math.floor(rem/60);const s=rem%60;
+  const d=Math.floor(totalSecs/secsPerDay);
+  let rem=totalSecs%secsPerDay;
+  const h=Math.floor(rem/3600);rem%=3600;
+  const m=Math.floor(rem/60);
+  const s=rem%60;
+  // Short text: 1d 2h 30m 5s
   const p=[];if(d>0)p.push(d+'d');if(h>0)p.push(h+'h');if(m>0)p.push(m+'m');if(s>0||p.length===0)p.push(s+'s');
-  return{text:p.join(' '),d,h,m,s,total:totalSecs,mins:Math.round(totalSecs/60)};
+  // hh:mm:ss — always use raw total seconds → total clock hours (never capped at 24)
+  // e.g. 2 days 2h 30m 5s (biz) = 2*12+2=26h → 26:30:05
+  // e.g. 2 days 2h 30m 5s (cal) = 2*24+2=50h → 50:30:05
+  const totalHours=d*(bizOnly?BIZ_HPD:24)+h;
+  const pp=n=>String(n).padStart(2,'0');
+  const hhmmss=`${pp(totalHours)}:${pp(m)}:${pp(s)}`;
+  // Long human text: X day(s) X hour(s) X min(s) X sec(s)
+  const lp=[];
+  if(d>0)lp.push(`${d} day${d!==1?'s':''}`);
+  if(h>0)lp.push(`${h} hour${h!==1?'s':''}`);
+  if(m>0)lp.push(`${m} min${m!==1?'s':''}`);
+  if(s>0||lp.length===0)lp.push(`${s} second${s!==1?'s':''}`);
+  const long=lp.join(' ');
+  const totalHoursDec=(totalSecs/3600).toFixed(2);
+  return{text:p.join(' '),hhmmss,long,d,h,m,s,total:totalSecs,mins:Math.round(totalSecs/60),totalHours:totalHoursDec};
 }
 function slaStat(secs,thrMins){const r=secs/(thrMins*60);if(r<=0.5)return{label:'WITHIN SLA',cls:'sla-ok'};if(r<=1)return{label:'AT RISK',cls:'sla-risk'};return{label:'SLA BREACH',cls:'sla-breach'};}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -293,8 +395,36 @@ function calcSingle(metric){
   const r=fmtSecs(secs,!isMTTD);const sla=slaStat(secs,thr);
   const parts=[{lbl:'Days',val:r.d,unit:'day'+(r.d!==1?'s':'')},{lbl:'Hours',val:r.h,unit:'hour'+(r.h!==1?'s':'')},{lbl:'Minutes',val:r.m,unit:'minute'+(r.m!==1?'s':'')},{lbl:'Seconds',val:r.s,unit:'second'+(r.s!==1?'s':'')}];
   const breakHTML=parts.map(x=>`<div class="breakdown-row"><span class="breakdown-label">${x.lbl}</span><span class="breakdown-val" style="color:${accent}">${x.val} <span class="breakdown-unit">${x.unit}</span></span></div>`).join('');
-  const cols=parts.filter(x=>x.val>0).length||1;
-  document.getElementById(rid).innerHTML=`<div class="result-card" style="background:${accentBg};border-color:${accentBorder}"><div class="sla-badge ${sla.cls}">${sla.label}</div><div class="result-label">${isMTTD?'MTTD — CALENDAR TIME':'MTTR — BUSINESS HOURS ONLY'}</div><div class="result-value" style="color:${accent}">${r.text}</div><div class="result-sub">${r.total.toLocaleString()} seconds &nbsp;·&nbsp; ${r.mins.toLocaleString()} minutes &nbsp;·&nbsp; ${isMTTD?'Includes nights &amp; weekends':'Mon–Fri 08:00–20:00 only'}</div><div class="breakdown-grid" style="grid-template-columns:repeat(${Math.min(cols,4)},1fr)">${breakHTML}</div></div>`;
+  document.getElementById(rid).innerHTML=`
+  <div class="result-card" style="background:${accentBg};border-color:${accentBorder}">
+    <div class="sla-badge ${sla.cls}">${sla.label}</div>
+    <div class="result-label">${isMTTD?'MTTD — CALENDAR TIME':'MTTR — BUSINESS HOURS ONLY'}</div>
+
+    <!-- PRIMARY: hh:mm:ss -->
+    <div style="margin-bottom:4px">
+      <div style="font-size:11px;color:#9ca3af;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">HH : MM : SS</div>
+      <div class="result-value" style="color:${accent};font-size:46px;letter-spacing:0.08em;font-variant-numeric:tabular-nums">${r.hhmmss}</div>
+    </div>
+
+    <!-- SECONDARY: human long format -->
+    <div style="margin:10px 0 6px;padding:8px 16px;background:#fff;border-radius:7px;border:1px solid ${accentBorder};font-size:15px;font-weight:700;color:${accent}">
+      ${r.long}
+    </div>
+
+    <!-- TOTALS row -->
+    <div style="display:flex;justify-content:center;gap:20px;font-size:11px;color:#9ca3af;margin-bottom:12px;flex-wrap:wrap">
+      <span><b style="color:#374151">${r.total.toLocaleString()}</b> total seconds</span>
+      <span>·</span>
+      <span><b style="color:#374151">${r.mins.toLocaleString()}</b> total minutes</span>
+      <span>·</span>
+      <span><b style="color:#374151">${r.totalHours}</b> total hours</span>
+    </div>
+
+    <!-- BREAKDOWN grid -->
+    <div class="breakdown-grid" style="grid-template-columns:repeat(4,1fr)">${breakHTML}</div>
+
+    <div style="margin-top:8px;font-size:10px;color:#9ca3af">${isMTTD?'Includes nights &amp; weekends':'Mon–Fri 08:00–20:00 · Sat 08:00–10:00 · Off-hours sent = raw diff'}</div>
+  </div>`;
 }
 // ── BULK ──────────────────────────────────────────────────────────────────────
 function renderBulk(metric){
@@ -303,9 +433,9 @@ function renderBulk(metric){
   const computed=b.rows.map(r=>{if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2))return{...r,secs:null,res:null,sla:null,err:r.t1Raw&&!r.t1?'Parse err T1':r.t2Raw&&!r.t2?'Parse err T2':null};if(r.t2<=r.t1)return{...r,secs:null,res:null,sla:null,err:'End before start'};const secs=isMTTD?calcCalSecs(r.t1,r.t2):calcBizSecs(r.t1,r.t2);return{...r,secs,res:fmtSecs(secs,!isMTTD),sla:slaStat(secs,240),err:null};});
   let tableHTML='';
   if(b.rows.length===0){tableHTML=`<div class="empty-state">No rows yet — import a CSV file, paste bulk data, or click + Add Row</div>`;}
-  else{const rowsHTML=computed.map((row,i)=>{let rH='<span style="color:#d1d5db">—</span>',sH='';if(row.res){rH=`<span style="color:${accent};font-weight:700">${row.res.text}</span>`;sH=`<span class="sla-badge ${row.sla.cls}" style="font-size:9px;padding:2px 8px">${row.sla.label}</span>`;}else if(row.err)rH=`<span style="color:#dc2626;font-size:11px">${row.err}</span>`;return `<tr><td><span style="color:#9ca3af">${i+1}</span></td><td><input class="td-input" value="${esc(row.label||'')}" placeholder="Label" oninput="updateBulkRow('${metric}',${i},'label',this.value)" style="width:90px"/></td><td><input class="td-input" value="${esc(row.t1Raw||'')}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t1Raw',this.value)" style="width:150px;color:${row.t1?'#1a1a2e':'#9ca3af'}"/></td><td><input class="td-input" value="${esc(row.t2Raw||'')}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t2Raw',this.value)" style="width:150px;color:${row.t2?'#1a1a2e':'#9ca3af'}"/></td><td><span style="color:${row.t1?'#16a34a':'#d1d5db'};font-size:11px">${row.t1?fmtShort(row.t1):'—'}</span></td><td><span style="color:${row.t2?'#16a34a':'#d1d5db'};font-size:11px">${row.t2?fmtShort(row.t2):'—'}</span></td><td>${rH}</td><td>${sH}</td><td><button class="del-btn" onclick="delBulkRow('${metric}',${i})">×</button></td></tr>`;}).join('');tableHTML=`<div class="tbl-wrap"><table><thead><tr><th>#</th><th>Label</th><th>${label1}</th><th>${label2}</th><th>Parsed T1</th><th>Parsed T2</th><th>Result</th><th>SLA</th><th></th></tr></thead><tbody>${rowsHTML}</tbody></table></div>`;}
+  else{const rowsHTML=computed.map((row,i)=>{let rH='<span style="color:#d1d5db">—</span>',sH='';if(row.res){rH=`<span style="color:${accent};font-weight:700;font-variant-numeric:tabular-nums">${row.res.hhmmss}</span><br/><span style="color:#6b7280;font-size:10px">${row.res.long}</span>`;sH=`<span class="sla-badge ${row.sla.cls}" style="font-size:9px;padding:2px 8px">${row.sla.label}</span>`;}else if(row.err)rH=`<span style="color:#dc2626;font-size:11px">${row.err}</span>`;return `<tr><td><span style="color:#9ca3af">${i+1}</span></td><td><input class="td-input" value="${esc(row.label||'')}" placeholder="Label" oninput="updateBulkRow('${metric}',${i},'label',this.value)" style="width:90px"/></td><td><input class="td-input" value="${esc(row.t1Raw||'')}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t1Raw',this.value)" style="width:150px;color:${row.t1?'#1a1a2e':'#9ca3af'}"/></td><td><input class="td-input" value="${esc(row.t2Raw||'')}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t2Raw',this.value)" style="width:150px;color:${row.t2?'#1a1a2e':'#9ca3af'}"/></td><td><span style="color:${row.t1?'#16a34a':'#d1d5db'};font-size:11px">${row.t1?fmtShort(row.t1):'—'}</span></td><td><span style="color:${row.t2?'#16a34a':'#d1d5db'};font-size:11px">${row.t2?fmtShort(row.t2):'—'}</span></td><td>${rH}</td><td>${sH}</td><td><button class="del-btn" onclick="delBulkRow('${metric}',${i})">×</button></td></tr>`;}).join('');tableHTML=`<div class="tbl-wrap"><table><thead><tr><th>#</th><th>Label</th><th>${label1}</th><th>${label2}</th><th>Parsed T1</th><th>Parsed T2</th><th>Result</th><th>SLA</th><th></th></tr></thead><tbody>${rowsHTML}</tbody></table></div>`;}
   const valid=computed.filter(r=>r.res);let sumHTML='';
-  if(valid.length>0){const avgS=Math.round(valid.reduce((a,r)=>a+r.secs,0)/valid.length);const mn=valid.reduce((a,r)=>r.secs<a.secs?r:a,valid[0]);const mx=valid.reduce((a,r)=>r.secs>a.secs?r:a,valid[0]);sumHTML=`<div class="grid3" style="margin-top:12px"><div class="summary-card" style="background:${accentBg};border-color:${accentBorder}"><div class="sum-label">Avg ${isMTTD?'MTTD':'MTTR'}</div><div class="sum-value" style="color:${accent}">${fmtSecs(avgS,!isMTTD).text}</div><div class="sum-sub">${valid.length} ticket${valid.length!==1?'s':''}</div></div><div class="summary-card" style="background:#f0fdf4;border-color:#bbf7d0"><div class="sum-label">Fastest</div><div class="sum-value" style="color:#16a34a">${fmtSecs(mn.secs,!isMTTD).text}</div><div class="sum-sub">${esc(mn.label||'—')}</div></div><div class="summary-card" style="background:#fffbeb;border-color:#fde68a"><div class="sum-label">Slowest</div><div class="sum-value" style="color:#b45309">${fmtSecs(mx.secs,!isMTTD).text}</div><div class="sum-sub">${esc(mx.label||'—')}</div></div></div>`;}
+  if(valid.length>0){const avgS=Math.round(valid.reduce((a,r)=>a+r.secs,0)/valid.length);const mn=valid.reduce((a,r)=>r.secs<a.secs?r:a,valid[0]);const mx=valid.reduce((a,r)=>r.secs>a.secs?r:a,valid[0]);const avgR=fmtSecs(avgS,!isMTTD);const mnR=fmtSecs(mn.secs,!isMTTD);const mxR=fmtSecs(mx.secs,!isMTTD);sumHTML=`<div class="grid3" style="margin-top:12px"><div class="summary-card" style="background:${accentBg};border-color:${accentBorder}"><div class="sum-label">Avg ${isMTTD?'MTTD':'MTTR'}</div><div class="sum-value" style="color:${accent};font-variant-numeric:tabular-nums">${avgR.hhmmss}</div><div class="sum-sub" style="font-weight:600;color:#374151">${avgR.long}</div><div class="sum-sub">${valid.length} ticket${valid.length!==1?'s':''}</div></div><div class="summary-card" style="background:#f0fdf4;border-color:#bbf7d0"><div class="sum-label">Fastest</div><div class="sum-value" style="color:#16a34a;font-variant-numeric:tabular-nums">${mnR.hhmmss}</div><div class="sum-sub" style="font-weight:600;color:#374151">${mnR.long}</div><div class="sum-sub">${esc(mn.label||'—')}</div></div><div class="summary-card" style="background:#fffbeb;border-color:#fde68a"><div class="sum-label">Slowest</div><div class="sum-value" style="color:#b45309;font-variant-numeric:tabular-nums">${mxR.hhmmss}</div><div class="sum-sub" style="font-weight:600;color:#374151">${mxR.long}</div><div class="sum-sub">${esc(mx.label||'—')}</div></div></div>`;}
   const pastePanel=b.pasteOpen?`<div class="paste-panel" style="border:1px solid ${accentBorder}"><div class="paste-header">📋 Paste Bulk Data — One row per line · Columns: ${label1}, ${label2} (tab / comma / pipe separated)</div><div class="paste-hint">Accepts any format: "3/6/2026 4:21:26 PM", "06-03-2026 16:21:26", ISO, 24h, 12h — seconds captured</div><textarea class="paste-area" id="pasteArea-${metric}" rows="5" placeholder="Examples:&#10;3/6/2026 4:21:26 PM&#9;3/6/2026 5:45:30 PM&#10;Ticket-002,3/7/2026 9:00:00 AM,3/7/2026 2:30:15 PM">${b.pasteText}</textarea><div class="paste-footer"><button onclick="applyPaste('${metric}')" class="tbtn" style="background:${accent};border-color:${accent};color:#fff">✓ Parse &amp; Add Rows</button><button onclick="closePaste('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#6b7280">Cancel</button><span class="parse-count" id="parseCount-${metric}"></span></div></div>`:'';
   document.getElementById(`bulk-${metric}-panel`).innerHTML=`<div class="toolbar"><button onclick="triggerFileInput('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#374151">⬆ Import CSV</button><button onclick="dlTemplate('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#374151">⬇ Template CSV</button><button onclick="exportCSV('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#374151">📤 Export Results</button><button onclick="togglePaste('${metric}')" class="tbtn" style="background:${b.pasteOpen?accent:'#f5f6fa'};border-color:${b.pasteOpen?accent:'#dde1ee'};color:${b.pasteOpen?'#fff':'#374151'}">📋 Paste Bulk Data</button><button onclick="addBulkRow('${metric}')" class="tbtn" style="background:${accentBg};border-color:${accentBorder};color:${accent};font-weight:700">+ Add Row</button>${b.rows.length>0?`<button onclick="clearBulk('${metric}')" class="tbtn" style="background:#fff1f2;border-color:#fecdd3;color:#be123c">🗑 Clear All</button>`:''}<input type="file" id="csvInput-${metric}" class="hidden" accept=".csv,.txt" onchange="handleCSVFile('${metric}',this)"/></div><div class="dropzone" id="dropzone-${metric}" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop('${metric}',event)" onclick="triggerFileInput('${metric}')"><div style="font-size:20px;margin-bottom:4px">📂</div>Drag &amp; drop CSV here · or click to browse<br/><span style="font-size:11px;color:#9ca3af">Supports Excel format (3/6/2026 4:21:26 PM) and any other date/time format</span></div>${pastePanel}${tableHTML}${sumHTML}`;
   if(b.pasteOpen){const ta=document.getElementById(`pasteArea-${metric}`);if(ta)ta.oninput=function(){state.bulk[metric].pasteText=this.value;const cnt=parseBulkText(this.value).length;document.getElementById(`parseCount-${metric}`).textContent=cnt>0?cnt+' row'+(cnt!==1?'s':'')+' detected':'';};}
@@ -351,7 +481,7 @@ function parseCSV(metric,text){
   else alert('No valid rows found. Check that your CSV has datetime columns.\nExpected format example: 3/6/2026 4:21:26 PM');
 }
 function dlTemplate(metric){const isMTTD=metric==='mttd';const h1=isMTTD?'Detection Time':'Mail Sent Time';const h2=isMTTD?'Acknowledgement Time':'Mail Response Time';const csv=[`Label,${h1},${h2}`,`Ticket-001,3/6/2026 4:21:26 PM,3/6/2026 5:45:30 PM`,`Ticket-002,3/7/2026 9:00:15 AM,3/7/2026 2:30:45 PM`,`Ticket-003,06-03-2026 08:15:00,06-03-2026 11:45:20`,`Ticket-004,2026-03-09T09:00:00,2026-03-09T17:30:45`].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`${metric.toUpperCase()}_template.csv`;a.click();}
-function exportCSV(metric){const isMTTD=metric==='mttd';const h1=isMTTD?'Detection Time':'Mail Sent Time';const h2=isMTTD?'Acknowledgement Time':'Mail Response Time';const rows=state.bulk[metric].rows;const header=`Label,${h1},${h2},Result,Total Seconds,Total Minutes,SLA Status`;const lines=rows.map(r=>{if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2)||r.t2<=r.t1)return null;const secs=isMTTD?calcCalSecs(r.t1,r.t2):calcBizSecs(r.t1,r.t2);const res=fmtSecs(secs,!isMTTD);const sla=slaStat(secs,240);return[r.label,fmtDisplay(r.t1),fmtDisplay(r.t2),res.text,secs,res.mins,sla.label].map(v=>`"${v}"`).join(',');}).filter(Boolean);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([[header,...lines].join('\n')],{type:'text/csv'}));a.download=`${metric.toUpperCase()}_results_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
+function exportCSV(metric){const isMTTD=metric==='mttd';const h1=isMTTD?'Detection Time':'Mail Sent Time';const h2=isMTTD?'Acknowledgement Time':'Mail Response Time';const rows=state.bulk[metric].rows;const header=`Label,${h1},${h2},HH:MM:SS,Duration (Long),Total Seconds,Total Minutes,Total Hours,SLA Status`;const lines=rows.map(r=>{if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2)||r.t2<=r.t1)return null;const secs=isMTTD?calcCalSecs(r.t1,r.t2):calcBizSecs(r.t1,r.t2);const res=fmtSecs(secs,!isMTTD);const sla=slaStat(secs,240);return[r.label,fmtDisplay(r.t1),fmtDisplay(r.t2),res.hhmmss,res.long,secs,res.mins,res.totalHours,sla.label].map(v=>`"${v}"`).join(',');}).filter(Boolean);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([[header,...lines].join('\n')],{type:'text/csv'}));a.download=`${metric.toUpperCase()}_results_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
 // ── TEAM ──────────────────────────────────────────────────────────────────────
 function showTeam(){const ws=JSON.parse(localStorage.getItem('sla_ws')||'{"name":"Default Team","member":"Me"}');document.getElementById('wsNameInput').value=ws.name;document.getElementById('wsMemberInput').value=ws.member;document.getElementById('teamModal').classList.remove('hidden');}
 function hideTeam(){document.getElementById('teamModal').classList.add('hidden');}
