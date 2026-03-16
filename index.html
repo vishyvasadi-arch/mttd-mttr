@@ -270,24 +270,54 @@ function nextDay(d){const n=new Date(d);n.setDate(n.getDate()+1);n.setHours(0,0,
 function calcBizSecs(start,end){
   if(!start||!end||isNaN(start)||isNaN(end)||end<=start)return 0;
 
-  const sentInBiz=isInBizWindow(start); // was sent during a countable window?
+  const sentInBiz = isInBizWindow(start);
+  const respInBiz = isInBizWindow(end);
 
-  // ── RULE: If sent AND response are both outside all counting windows
-  //    → return raw wall-clock diff (no filtering at all)
-  // We detect this by checking if start is outside biz AND end is outside biz
-  // and they are on the same day or contiguous off-hours span.
-  // Simplest approach: if sent is NOT in any biz window, use raw diff.
-  if(!sentInBiz){
-    // Sent outside business/Saturday hours → raw actual diff
+  // ─────────────────────────────────────────────────────────────────
+  // RULE TABLE:
+  //
+  //  Sent          │ Response       │ Calculation
+  // ───────────────┼────────────────┼──────────────────────────────
+  //  In biz hours  │ In biz hours   │ Count biz window seconds
+  //  In biz hours  │ After-hours    │ Full raw diff from sent
+  //  Off-hours     │ Off-hours      │ Full raw diff (as-is)
+  //  Off-hours     │ In biz hours   │ Count biz window from 08:00
+  //                │                │ on NEXT/SAME biz day to response
+  // ─────────────────────────────────────────────────────────────────
+
+  // CASE 3: Sent off-hours, Response also off-hours → raw diff
+  if(!sentInBiz && !respInBiz){
     return Math.round((end-start)/1000);
   }
 
-  // ── RULE: Sent inside biz hours → count biz/Saturday seconds until response
-  // But if response is AFTER the biz window closes on that day (or any day),
-  // we count right up to response time (full raw diff from sent).
-  // This covers: sent 19:30 → response 21:30 = full 2hrs.
-  // We do this by counting biz-window seconds day by day, PLUS
-  // any after-hours seconds on the FINAL day (response day) if response > window end.
+  // CASE 4: Sent off-hours, Response in biz hours
+  // → count from start of biz window on response day back to response
+  // i.e. how long into the biz window did it take to respond
+  // = response time - biz window start on that same day
+  if(!sentInBiz && respInBiz){
+    // Find the biz window start for the response day
+    const respDay = end.getDay();
+    let winStart;
+    if(respDay===6){
+      // Saturday window
+      const ws=new Date(end);ws.setHours(SAT_S,0,0,0);
+      winStart=ws;
+    } else {
+      // Mon–Fri window
+      const ws=new Date(end);ws.setHours(BIZ_S,0,0,0);
+      winStart=ws;
+    }
+    // Safety: if end < winStart somehow, return 0
+    if(end<=winStart)return 0;
+    return Math.round((end-winStart)/1000);
+  }
+
+  // CASE 1 & 2: Sent inside biz hours
+  // Count biz-window seconds day by day.
+  // On the FINAL day:
+  //   - If response <= window end → count only up to response (in-window)
+  //   - If response >  window end → count full raw diff from cur position
+  //     (handles sent-in-hours, response after-hours = full raw diff)
 
   let tot=0;
   let cur=new Date(start);
@@ -296,50 +326,37 @@ function calcBizSecs(start,end){
     if(cur>=end)break;
 
     const day=cur.getDay();
-    const isSun=day===0;
-    const isSat=day===6;
-    const isMon_Fri=day>=1&&day<=5;
 
-    // Determine this day's countable window (seconds-of-day)
-    let winS,winE;
-    if(isSun){
-      // Sunday fully excluded — skip to Monday 00:00
+    // Sunday — fully excluded, skip to next day midnight
+    if(day===0){
       const n=new Date(cur);n.setDate(n.getDate()+1);n.setHours(0,0,0,0);
       cur=n;continue;
-    }else if(isSat){
-      winS=SAT_S*3600;winE=SAT_E*3600;
-    }else{
-      winS=BIZ_S*3600;winE=BIZ_E*3600;
     }
 
-    const startOfNextDay=nextDay(cur);
-    const isLastDay=cur.toDateString()===end.toDateString();
-    const periodEnd=isLastDay?end:startOfNextDay;
+    // Determine window for this day
+    const winS = (day===6) ? SAT_S*3600 : BIZ_S*3600;
+    const winE = (day===6) ? SAT_E*3600 : BIZ_E*3600;
+
+    const isLastDay = cur.toDateString()===end.toDateString();
 
     if(isLastDay){
-      // On the response day:
-      // Count biz-window seconds normally PLUS any extra after-window seconds
-      // (handles sent-in-hours → response after-hours = full raw diff)
-      const fromSod=sod(cur);
-      const toSod=sod(end);
-
-      if(toSod>winE){
-        // Response is after the window end on this day
-        // Count: from cur to window end (biz portion) + window end to response (after-hours portion)
-        // = effectively the full diff from cur to end
-        tot+=Math.max(0,sod(end)-sod(cur));
-      }else{
-        // Response is within or before window — count only what's in window
-        const a=Math.max(sod(cur),winS);
-        const b=Math.min(toSod,winE);
-        tot+=Math.max(0,b-a);
+      const fromSod = sod(cur);
+      const toSod   = sod(end);
+      if(toSod > winE){
+        // Response after window end → full raw diff from current position to end
+        tot += Math.max(0, toSod - fromSod);
+      } else {
+        // Response within window → count only window portion
+        const a = Math.max(fromSod, winS);
+        const b = Math.min(toSod,   winE);
+        tot += Math.max(0, b - a);
       }
       break;
-    }else{
-      // Not the last day — count only the biz window portion for this day
-      const a=Math.max(sod(cur),winS);
-      tot+=Math.max(0,winE-a);
-      cur=startOfNextDay;
+    } else {
+      // Not the last day — count window portion for this day then move on
+      const a = Math.max(sod(cur), winS);
+      tot += Math.max(0, winE - a);
+      cur = nextDay(cur);
     }
   }
   return Math.round(tot);
