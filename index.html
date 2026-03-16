@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SLA Console · MTTD & MTTR</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:#060912;color:#dde6f5;font-family:'DM Mono',monospace;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#0b0e1a}
+::-webkit-scrollbar-thumb{background:#1e2640;border-radius:3px}
+input,textarea,select,button{font-family:inherit}
+::selection{background:#3b4fd820;color:#a5b4fc}
+
+/* Layout */
+.topbar{background:#08091a;border-bottom:1px solid #111628;padding:0 24px;display:flex;align-items:center;height:54px;gap:16px;position:sticky;top:0;z-index:50}
+.logo-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#a78bfa,#38bdf8);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.logo-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;letter-spacing:-0.01em;line-height:1}
+.logo-sub{font-size:9px;color:#2a3455;letter-spacing:0.1em;margin-top:1px}
+.nav{display:flex;gap:2px;flex:1;overflow-x:auto}
+.nav-btn{padding:6px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#3a4566;font-size:11px;letter-spacing:0.04em;font-family:'DM Mono',monospace;cursor:pointer;white-space:nowrap;transition:all 0.15s}
+.nav-btn.active-mttd{color:#a78bfa;border-bottom-color:#a78bfa;background:#a78bfa12}
+.nav-btn.active-mttr{color:#38bdf8;border-bottom-color:#38bdf8;background:#38bdf812}
+.nav-btn:hover{color:#dde6f5}
+.team-btn{padding:6px 12px;background:#111628;border:1px solid #1a1f35;border-radius:6px;color:#4a5578;font-size:11px;cursor:pointer;font-family:'DM Mono',monospace;flex-shrink:0}
+.infobar{background:#08091a;border-bottom:1px solid #0f1222;padding:5px 24px;display:flex;gap:16px;flex-wrap:wrap}
+.info-item{display:flex;gap:5px;align-items:center;font-size:10px}
+.info-label{font-weight:600}
+.info-desc{color:#2a3455}
+.main{max-width:1100px;width:100%;margin:0 auto;padding:20px 24px}
+.section-header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.section-bar{width:3px;height:26px;border-radius:2px}
+.section-title{font-family:'Syne',sans-serif;font-size:19px;font-weight:700}
+.section-sub{font-size:10px;color:#2a3455;margin-top:2px;letter-spacing:0.07em}
+.panel{background:#0a0c18;border:1px solid #111628;border-radius:14px;padding:20px}
+.footer{border-top:1px solid #0f1222;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#1a2035;margin-top:20px}
+
+/* Cards */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.date-card{background:#0b0e1c;border:1px solid #1a1f35;border-radius:10px;padding:14px 16px;transition:border-color 0.2s}
+.date-card.valid-mttd{border-color:#a78bfa30}
+.date-card.valid-mttr{border-color:#38bdf830}
+.date-card.error{border-color:#ef444440}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.card-label{display:flex;align-items:center;gap:6px;font-size:10px;color:#4a5578;letter-spacing:0.1em;font-weight:500}
+.mode-btns{display:flex;gap:4px}
+.mode-btn{padding:3px 10px;border-radius:4px;border:none;cursor:pointer;font-size:10px;letter-spacing:0.06em;font-family:'DM Mono',monospace;transition:all 0.15s}
+.mode-btn.inactive{background:#12172a;color:#4a5578}
+.date-input{width:100%;background:#060912;border:1px solid #1a1f35;border-radius:7px;padding:9px 12px;color:#dde6f5;font-size:12px;font-family:'DM Mono',monospace;outline:none;transition:border-color 0.2s}
+.date-input:focus{border-color:#3a4566}
+.date-input.dt{color-scheme:dark}
+.status-row{margin-top:7px;min-height:18px;font-size:11px;display:flex;align-items:center;gap:8px}
+.tag-green{color:#22c55e}
+.tag-yellow{color:#f59e0b}
+.tag-red{color:#ef4444}
+.tag-dim{color:#3a4566;font-size:10px}
+.dot{color:#1a2035}
+
+/* Result */
+.result-card{border-radius:12px;padding:22px 26px;text-align:center;margin-top:14px}
+.result-label{font-size:10px;color:#3a4566;letter-spacing:0.15em;margin-bottom:6px}
+.result-value{font-family:'Syne',sans-serif;font-size:48px;font-weight:800;letter-spacing:-0.03em;line-height:1}
+.result-sub{font-size:11px;color:#2a3050;margin-top:8px}
+.chips{display:flex;justify-content:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+.chip{border-radius:6px;padding:5px 12px;font-size:12px}
+.sla-badge{display:inline-block;border-radius:20px;padding:3px 12px;font-size:10px;letter-spacing:0.1em;margin-bottom:10px}
+.sla-ok{background:#052e16;border:1px solid #22c55e40;color:#22c55e}
+.sla-risk{background:#1c1002;border:1px solid #f59e0b40;color:#f59e0b}
+.sla-breach{background:#1c0505;border:1px solid #ef444440;color:#ef4444}
+
+/* Toolbar */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tbtn{border-radius:6px;cursor:pointer;font-size:11px;letter-spacing:0.04em;transition:all 0.15s;font-family:'DM Mono',monospace;padding:7px 13px;border:1px solid}
+.dropzone{border:2px dashed #1a1f35;border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:12px;font-size:12px;color:#3a4566}
+.dropzone:hover,.dropzone.over{border-color:#a78bfa;background:#a78bfa08}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid #1a1f35}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead tr{background:#0b0e1c;border-bottom:1px solid #1a1f35}
+th{padding:9px 10px;text-align:left;font-size:9px;color:#2a3455;letter-spacing:0.1em;font-weight:500;white-space:nowrap}
+tbody tr{border-bottom:1px solid #0f1222}
+tbody tr:nth-child(even){background:#08090f}
+tbody tr:nth-child(odd){background:#060912}
+td{padding:7px 10px;vertical-align:middle}
+.td-input{width:100%;background:transparent;border:none;color:#dde6f5;font-family:'DM Mono',monospace;font-size:11px;outline:none;padding:0;min-width:0}
+.del-btn{background:none;border:none;color:#2a3455;cursor:pointer;font-size:14px;padding:0 4px;transition:color 0.15s}
+.del-btn:hover{color:#ef4444}
+.empty-state{border:1px dashed #1a1f35;border-radius:10px;padding:28px;text-align:center;color:#2a3455;font-size:12px}
+
+/* Paste panel */
+.paste-panel{background:#0b0e1c;border-radius:10px;padding:14px;margin-bottom:12px}
+.paste-header{font-size:11px;color:#4a5578;margin-bottom:6px;letter-spacing:0.06em}
+.paste-hint{font-size:10px;color:#2a3050;margin-bottom:8px}
+.paste-area{width:100%;background:#060912;border:1px solid #1a1f35;border-radius:7px;padding:10px 12px;color:#dde6f5;font-size:11px;font-family:'DM Mono',monospace;outline:none;resize:vertical}
+.paste-footer{margin-top:8px;display:flex;gap:8px;align-items:center}
+.parse-count{font-size:10px;color:#4a5578}
+
+/* SLA threshold */
+.sla-row{margin-top:10px;display:flex;align-items:center;gap:10px;font-size:11px;color:#3a4566}
+.sla-input{width:80px;background:#0b0e1c;border:1px solid #1a1f35;border-radius:5px;padding:4px 8px;font-size:11px;outline:none;font-family:'DM Mono',monospace}
+
+/* Summary */
+.summary-card{border-radius:10px;padding:14px 18px;text-align:center}
+.sum-label{font-size:9px;letter-spacing:0.12em;margin-bottom:4px}
+.sum-value{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;line-height:1}
+.sum-sub{font-size:10px;color:#2a3455;margin-top:3px}
+
+/* Format ref */
+.fmt-ref{margin-top:14px;background:#08091a;border:1px solid #0f1222;border-radius:10px;padding:12px 16px}
+.fmt-title{font-size:9px;color:#2a3455;letter-spacing:0.12em;margin-bottom:7px}
+.fmt-chips{display:flex;gap:5px;flex-wrap:wrap}
+.fmt-chip{font-size:10px;color:#34d39980;background:#05120d;border:1px solid #052e1640;border-radius:4px;padding:2px 7px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:#060912cc;backdrop-filter:blur(4px);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal{background:#0b0e1c;border:1px solid #1a1f35;border-radius:14px;padding:26px;width:460px;max-width:95vw}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700}
+.modal-sub{font-size:10px;color:#3a4566;margin-top:2px;letter-spacing:0.08em}
+.close-btn{background:none;border:none;color:#4a5578;font-size:20px;cursor:pointer}
+.field-label{font-size:10px;color:#3a4566;letter-spacing:0.1em;display:block;margin-bottom:5px}
+.field-input{width:100%;background:#060912;border:1px solid #1a1f35;border-radius:7px;padding:9px 12px;color:#dde6f5;font-family:'DM Mono',monospace;font-size:12px;outline:none}
+.field-group{margin-bottom:12px}
+.msg{padding:8px 12px;border-radius:7px;font-size:12px;margin-top:10px}
+.msg-ok{background:#052e16;border:1px solid #22c55e30;color:#22c55e}
+.msg-err{background:#1c0505;border:1px solid #ef444430;color:#ef4444}
+.share-section{border-top:1px solid #1a1f35;padding-top:14px;margin-top:14px}
+.share-label{font-size:11px;color:#3a4566;margin-bottom:8px;letter-spacing:0.06em}
+.share-btns{display:flex;gap:8px}
+.share-tip{font-size:10px;color:#2a3455;margin-top:8px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-title">SLA Console</div>
+      <div class="logo-sub">MTTD &amp; MTTR AUTOMATION</div>
+    </div>
+  </div>
+  <nav class="nav" id="mainNav">
+    <button class="nav-btn" data-tab="single-mttd" onclick="switchTab('single-mttd')">🔍 MTTD · Single</button>
+    <button class="nav-btn" data-tab="bulk-mttd"   onclick="switchTab('bulk-mttd')">📊 MTTD · Bulk</button>
+    <button class="nav-btn" data-tab="single-mttr" onclick="switchTab('single-mttr')">📤 MTTR · Single</button>
+    <button class="nav-btn" data-tab="bulk-mttr"   onclick="switchTab('bulk-mttr')">📈 MTTR · Bulk</button>
+  </nav>
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <div style="font-size:10px;color:#2a3455;text-align:right">
+      <div id="wsName" style="color:#4a5578">Default Team</div>
+      <div id="wsMember">Me</div>
+    </div>
+    <button class="team-btn" onclick="showTeam()">👥 Team</button>
+  </div>
+</header>
+
+<!-- INFO BAR -->
+<div class="infobar">
+  <div class="info-item"><span class="info-label" style="color:#a78bfa">MTTD</span><span class="info-desc">· Calendar time · Detection → Acknowledgement</span></div>
+  <div class="info-item"><span class="info-label" style="color:#38bdf8">MTTR</span><span class="info-desc">· Business hours only · Mail Sent → Response · Mon–Fri 08:00–20:00</span></div>
+  <div class="info-item"><span class="info-label" style="color:#34d399">SMART PARSE</span><span class="info-desc">· Paste any date format — auto-converted instantly</span></div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="section-header">
+    <div class="section-bar" id="sectionBar"></div>
+    <div>
+      <div class="section-title" id="sectionTitle"></div>
+      <div class="section-sub" id="sectionSub"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <!-- SINGLE MTTD -->
+    <div id="tab-single-mttd" class="tab-panel">
+      <div class="grid2">
+        <div id="card-smttd-t1"></div>
+        <div id="card-smttd-t2"></div>
+      </div>
+      <div class="sla-row">
+        SLA threshold: <input class="sla-input" id="sla-smttd" type="number" value="240" oninput="calcSingle('mttd')"/> minutes
+      </div>
+      <div id="result-smttd"></div>
+    </div>
+
+    <!-- BULK MTTD -->
+    <div id="tab-bulk-mttd" class="tab-panel hidden">
+      <div id="bulk-mttd-panel"></div>
+    </div>
+
+    <!-- SINGLE MTTR -->
+    <div id="tab-single-mttr" class="tab-panel hidden">
+      <div class="grid2">
+        <div id="card-smttr-t1"></div>
+        <div id="card-smttr-t2"></div>
+      </div>
+      <div class="sla-row">
+        SLA threshold: <input class="sla-input" id="sla-smttr" type="number" value="240" oninput="calcSingle('mttr')"/> minutes
+      </div>
+      <div id="result-smttr"></div>
+    </div>
+
+    <!-- BULK MTTR -->
+    <div id="tab-bulk-mttr" class="tab-panel hidden">
+      <div id="bulk-mttr-panel"></div>
+    </div>
+  </div>
+
+  <!-- Format Reference -->
+  <div class="fmt-ref">
+    <div class="fmt-title">SUPPORTED DATE/TIME FORMATS — PASTE ANY OF THESE DIRECTLY</div>
+    <div class="fmt-chips">
+      <span class="fmt-chip">3/6/2026 4:21:26 PM</span>
+      <span class="fmt-chip">3/6/2026 13:39</span>
+      <span class="fmt-chip">06-03-2026 16:21:26</span>
+      <span class="fmt-chip">2026-03-06T13:39:00</span>
+      <span class="fmt-chip">06/03/2026 04:21 PM</span>
+      <span class="fmt-chip">March 6 2026 4:21 PM</span>
+      <span class="fmt-chip">06 Mar 2026 16:21</span>
+      <span class="fmt-chip">Unix timestamp</span>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>SLA Console · MTTD &amp; MTTR Automation</span>
+  <span>Business Hours: Mon–Fri 08:00–20:00 IST · Weekends excluded from MTTR</span>
+</div>
+
+<!-- TEAM MODAL -->
+<div class="modal-overlay hidden" id="teamModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Team Workspace</div>
+        <div class="modal-sub">LOCAL STORAGE · SHARE VIA JSON EXPORT</div>
+      </div>
+      <button class="close-btn" onclick="hideTeam()">×</button>
+    </div>
+    <div class="field-group">
+      <label class="field-label">TEAM / PROJECT NAME</label>
+      <input class="field-input" id="wsNameInput" placeholder="e.g. Ops Team · Q1 2026"/>
+    </div>
+    <div class="field-group">
+      <label class="field-label">YOUR NAME / MEMBER ID</label>
+      <input class="field-input" id="wsMemberInput" placeholder="e.g. Priya · Analyst"/>
+    </div>
+    <button onclick="saveWorkspace()" style="width:100%" class="tbtn" style="background:#6366f120;border-color:#6366f140;color:#6366f1">💾 Save Settings</button>
+    <div class="share-section">
+      <div class="share-label">SHARE WORKSPACE DATA</div>
+      <div class="share-btns">
+        <button onclick="exportWS()" class="tbtn" style="flex:1;background:#0f172a;border-color:#38bdf840;color:#38bdf8">⬆ Export JSON</button>
+        <button onclick="document.getElementById('wsFile').click()" class="tbtn" style="flex:1;background:#0f172a;border-color:#a78bfa40;color:#a78bfa">⬇ Import JSON</button>
+        <input type="file" id="wsFile" class="hidden" accept=".json" onchange="importWS(this)"/>
+      </div>
+      <div class="share-tip">💡 Export JSON → Send to teammates → They import it → All data shared</div>
+    </div>
+    <div id="teamMsg"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// DATE PARSER — handles any format
+// ═══════════════════════════════════════════════════════
+const MONTHS={jan:0,january:0,feb:1,february:1,mar:2,march:2,apr:3,april:3,may:4,jun:5,june:5,jul:6,july:6,aug:7,august:7,sep:8,september:8,oct:9,october:9,nov:10,november:10,dec:11,december:11};
+
+function applyAP(h,ap){
+  if(!ap)return h;
+  const u=ap.toUpperCase();
+  if(u==='PM'&&h<12)return h+12;
+  if(u==='AM'&&h===12)return 0;
+  return h;
+}
+
+function parseAnyDate(s){
+  if(!s||!s.trim())return null;
+  s=s.trim();
+
+  // Native
+  const n=new Date(s);
+  if(!isNaN(n)&&n.getFullYear()>1970)return n;
+
+  // M/D/YYYY H:MM:SS AM/PM  (Excel default)
+  let m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if(m){
+    let[,p1,p2,yr,hr,mn,sc='0',ap]=m;
+    let mo,dy;
+    if(parseInt(p1)>12){dy=+p1;mo=+p2-1;}else{mo=+p1-1;dy=+p2;}
+    return new Date(+yr,mo,dy,applyAP(+hr,ap),+mn,+sc);
+  }
+
+  // M/D/YYYY date only
+  m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if(m){
+    let[,p1,p2,yr]=m;
+    let mo,dy;
+    if(parseInt(p1)>12){dy=+p1;mo=+p2-1;}else{mo=+p1-1;dy=+p2;}
+    return new Date(+yr,mo,dy,0,0,0);
+  }
+
+  // YYYY-MM-DD with optional time
+  m=s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if(m){
+    let[,yr,mo,dy,hr='0',mn='0',sc='0',ap]=m;
+    return new Date(+yr,+mo-1,+dy,applyAP(+hr,ap),+mn,+sc);
+  }
+
+  // DD MMM YYYY
+  m=s.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if(m){
+    let[,dy,mon,yr,hr='0',mn='0',sc='0',ap]=m;
+    const mo=MONTHS[mon.toLowerCase()];
+    if(mo!==undefined)return new Date(+yr,mo,+dy,applyAP(+hr,ap),+mn,+sc);
+  }
+
+  // MMM DD YYYY
+  m=s.match(/^([a-z]+)\s+(\d{1,2})[,\s]+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if(m){
+    let[,mon,dy,yr,hr='0',mn='0',sc='0',ap]=m;
+    const mo=MONTHS[mon.toLowerCase()];
+    if(mo!==undefined)return new Date(+yr,mo,+dy,applyAP(+hr,ap),+mn,+sc);
+  }
+
+  // Unix
+  if(/^\d{10}$/.test(s))return new Date(+s*1000);
+  if(/^\d{13}$/.test(s))return new Date(+s);
+
+  return null;
+}
+
+function fmtDisplay(d){
+  if(!d||isNaN(d))return '—';
+  return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST';
+}
+function fmtShort(d){
+  if(!d||isNaN(d))return '—';
+  return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+}
+
+// ═══════════════════════════════════════════════════════
+// CALCULATIONS
+// ═══════════════════════════════════════════════════════
+const BIZ_S=8,BIZ_E=20,BIZ_HPD=BIZ_E-BIZ_S;
+const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const isWknd=d=>d.getDay()===0||d.getDay()===6;
+
+function nextBizDay(d){
+  const n=new Date(d);
+  n.setDate(n.getDate()+1);
+  n.setHours(BIZ_S,0,0,0);
+  while(isWknd(n))n.setDate(n.getDate()+1);
+  return n;
+}
+
+function calcBiz(s,e){
+  if(!s||!e||isNaN(s)||isNaN(e)||e<=s)return 0;
+  let cur=new Date(s),tot=0;
+  while(isWknd(cur))cur=nextBizDay(cur);
+  const sh=cur.getHours()+cur.getMinutes()/60;
+  if(sh<BIZ_S)cur.setHours(BIZ_S,0,0,0);
+  else if(sh>=BIZ_E)cur=nextBizDay(cur);
+  for(let g=0;g<10000;g++){
+    if(isWknd(cur)){cur=nextBizDay(cur);continue;}
+    if(cur>=e)break;
+    if(cur.toDateString()===e.toDateString()){
+      const s2=cur.getHours()+cur.getMinutes()/60+cur.getSeconds()/3600;
+      const e2=Math.min(e.getHours()+e.getMinutes()/60+e.getSeconds()/3600,BIZ_E);
+      tot+=Math.max(0,e2-s2)*60;break;
+    }else{
+      const s2=cur.getHours()+cur.getMinutes()/60+cur.getSeconds()/3600;
+      tot+=Math.max(0,BIZ_E-s2)*60;
+      cur=nextBizDay(cur);
+    }
+  }
+  return Math.round(tot);
+}
+
+function calcCal(s,e){
+  if(!s||!e||isNaN(s)||isNaN(e)||e<=s)return 0;
+  return Math.round((e-s)/60000);
+}
+
+function fmtDur(mins,biz){
+  if(mins<=0)return{text:'0m',d:0,h:0,m:0,total:0};
+  const hpd=biz?BIZ_HPD:24;
+  const d=Math.floor(mins/(hpd*60)),rem=mins%(hpd*60),h=Math.floor(rem/60),m=rem%60;
+  const p=[];
+  if(d>0)p.push(d+'d');
+  if(h>0)p.push(h+'h');
+  if(m>0||p.length===0)p.push(m+'m');
+  return{text:p.join(' '),d,h,m,total:mins};
+}
+
+function slaStat(mins,thr){
+  const r=mins/thr;
+  if(r<=0.5)return{label:'WITHIN SLA',cls:'sla-ok'};
+  if(r<=1)return{label:'AT RISK',cls:'sla-risk'};
+  return{label:'SLA BREACH',cls:'sla-breach'};
+}
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const state={
+  activeTab:'single-mttd',
+  single:{mttd:{t1:null,t2:null},mttr:{t1:null,t2:null}},
+  bulk:{
+    mttd:{rows:[],pasteOpen:false,pasteText:''},
+    mttr:{rows:[],pasteOpen:false,pasteText:''}
+  }
+};
+
+// Load from localStorage
+try{
+  const saved=JSON.parse(localStorage.getItem('sla_bulk')||'{}');
+  ['mttd','mttr'].forEach(m=>{
+    if(saved[m])state.bulk[m].rows=saved[m].map(r=>({...r,t1:r.t1?new Date(r.t1):null,t2:r.t2?new Date(r.t2):null}));
+  });
+  const ws=JSON.parse(localStorage.getItem('sla_ws')||'{"name":"Default Team","member":"Me"}');
+  document.getElementById('wsName').textContent=ws.name;
+  document.getElementById('wsMember').textContent=ws.member;
+}catch(e){}
+
+function saveState(){
+  try{
+    const d={};
+    ['mttd','mttr'].forEach(m=>{
+      d[m]=state.bulk[m].rows.map(r=>({...r,t1:r.t1?r.t1.toISOString():null,t2:r.t2?r.t2.toISOString():null}));
+    });
+    localStorage.setItem('sla_bulk',JSON.stringify(d));
+  }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════
+const tabMeta={
+  'single-mttd':{metric:'mttd',mode:'single',label:'MTTD · Single Entry',sub:'Mean Time To Detect · Raw calendar time measurement',accent:'#a78bfa',accentCls:'mttd'},
+  'bulk-mttd':  {metric:'mttd',mode:'bulk',  label:'MTTD · Bulk Calculate',sub:'Mean Time To Detect · Import CSV or paste multiple timestamps',accent:'#a78bfa',accentCls:'mttd'},
+  'single-mttr':{metric:'mttr',mode:'single',label:'MTTR · Single Entry',sub:'Mean Time To Respond · Business hours only (08:00–20:00, Mon–Fri)',accent:'#38bdf8',accentCls:'mttr'},
+  'bulk-mttr':  {metric:'mttr',mode:'bulk',  label:'MTTR · Bulk Calculate',sub:'Mean Time To Respond · Import CSV or paste multiple timestamps',accent:'#38bdf8',accentCls:'mttr'}
+};
+
+function switchTab(t){
+  state.activeTab=t;
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('tab-'+t).classList.remove('hidden');
+  document.querySelectorAll('.nav-btn').forEach(b=>{b.classList.remove('active-mttd','active-mttr');});
+  const meta=tabMeta[t];
+  document.querySelector(`[data-tab="${t}"]`).classList.add('active-'+meta.accentCls);
+  document.getElementById('sectionBar').style.background=`linear-gradient(180deg,${meta.accent},${meta.accent}40)`;
+  document.getElementById('sectionTitle').style.color=meta.accent;
+  document.getElementById('sectionTitle').textContent=meta.label;
+  document.getElementById('sectionSub').textContent=meta.sub;
+  if(meta.mode==='single')renderSingleCards(meta.metric);
+  else renderBulk(meta.metric);
+}
+
+// ═══════════════════════════════════════════════════════
+// SINGLE CALC
+// ═══════════════════════════════════════════════════════
+function renderSingleCards(metric){
+  const isMTTD=metric==='mttd';
+  const accent=isMTTD?'#a78bfa':'#38bdf8';
+  const id=`s${metric}`;
+  renderDateCard(`card-${id}-t1`, isMTTD?'🔍':'📤', isMTTD?'DETECTION TIME (IST)':'MAIL SENT TIME (IST)', metric, 't1', accent);
+  renderDateCard(`card-${id}-t2`, isMTTD?'✅':'📥', isMTTD?'ACKNOWLEDGEMENT TIME (IST)':'MAIL RESPONSE TIME (IST)', metric, 't2', accent);
+  calcSingle(metric);
+}
+
+function renderDateCard(containerId, icon, label, metric, which, accent){
+  const id=`dc-${metric}-${which}`;
+  const val=state.single[metric][which];
+  const container=document.getElementById(containerId);
+  container.innerHTML=`
+  <div class="date-card" id="${id}">
+    <div class="card-header">
+      <div class="card-label"><span>${icon}</span>${label}</div>
+      <div class="mode-btns">
+        <button class="mode-btn" id="${id}-paste-btn" onclick="setCardMode('${id}','paste','${metric}','${which}')">✏ PASTE</button>
+        <button class="mode-btn inactive" id="${id}-picker-btn" onclick="setCardMode('${id}','picker','${metric}','${which}')">📅 PICKER</button>
+      </div>
+    </div>
+    <input class="date-input" id="${id}-input" type="text" placeholder="Paste any format: 3/6/2026 4:21:26 PM, 06-03-2026 16:21..."
+      oninput="onDateInput(this,'${metric}','${which}','paste')"
+      value="${val?val.toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true}):''}"/>
+    <div class="status-row" id="${id}-status"></div>
+  </div>`;
+  document.getElementById(`${id}-paste-btn`).style.cssText=`background:${accent};color:#fff;font-weight:600`;
+  if(val)updateCardStatus(id,val);
+}
+
+function setCardMode(id,mode,metric,which){
+  const pasteBtn=document.getElementById(`${id}-paste-btn`);
+  const pickerBtn=document.getElementById(`${id}-picker-btn`);
+  const input=document.getElementById(`${id}-input`);
+  const accent=metric==='mttd'?'#a78bfa':'#38bdf8';
+  if(mode==='paste'){
+    pasteBtn.classList.remove('inactive');
+    pasteBtn.style.cssText=`background:${accent};color:#fff;font-weight:600`;
+    pickerBtn.classList.add('inactive');
+    pickerBtn.style.cssText='';
+    const val=state.single[metric][which];
+    input.type='text';
+    input.placeholder='Paste any format: 3/6/2026 4:21:26 PM, 06-03-2026 16:21...';
+    input.oninput=function(){onDateInput(this,metric,which,'paste')};
+    if(val)input.value=val.toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});
+  }else{
+    pickerBtn.classList.remove('inactive');
+    pickerBtn.style.cssText=`background:${accent};color:#fff;font-weight:600`;
+    pasteBtn.classList.add('inactive');
+    pasteBtn.style.cssText='';
+    input.type='datetime-local';
+    input.classList.add('dt');
+    input.oninput=function(){onDateInput(this,metric,which,'picker')};
+    const val=state.single[metric][which];
+    if(val){
+      const pad=n=>String(n).padStart(2,'0');
+      input.value=`${val.getFullYear()}-${pad(val.getMonth()+1)}-${pad(val.getDate())}T${pad(val.getHours())}:${pad(val.getMinutes())}`;
+    }
+  }
+}
+
+function onDateInput(el,metric,which,mode){
+  let d;
+  if(mode==='picker'){d=el.value?new Date(el.value):null;}
+  else{d=parseAnyDate(el.value);}
+  state.single[metric][which]=d&&!isNaN(d)?d:null;
+  const id=`dc-${metric}-${which}`;
+  const card=document.getElementById(id);
+  if(d&&!isNaN(d)){
+    card.className='date-card valid-'+metric;
+    updateCardStatus(id,d);
+    if(mode==='paste'){
+      // sync picker value
+    }
+  }else{
+    card.className='date-card'+(el.value.trim()?' error':'');
+    document.getElementById(`${id}-status`).innerHTML=el.value.trim()?'<span class="tag-red">⚠ Cannot parse — try another format</span>':'';
+  }
+  calcSingle(metric);
+}
+
+function updateCardStatus(id,d){
+  const wknd=isWknd(d);
+  document.getElementById(`${id}-status`).innerHTML=
+    `<span class="${wknd?'tag-yellow':'tag-green'}">${wknd?'⚠':'✓'} ${DAY[d.getDay()]} ${wknd?'(Weekend)':'(Weekday)'}</span>`+
+    `<span class="dot">·</span><span class="tag-dim">${fmtDisplay(d)}</span>`;
+}
+
+function calcSingle(metric){
+  const isMTTD=metric==='mttd';
+  const t1=state.single[metric].t1, t2=state.single[metric].t2;
+  const accent=isMTTD?'#a78bfa':'#38bdf8';
+  const rid=`result-s${metric}`;
+  const thr=parseInt(document.getElementById(`sla-s${metric}`).value)||240;
+  if(!t1||!t2||t2<=t1){
+    document.getElementById(rid).innerHTML=t1&&t2&&t2<=t1?
+      `<div style="margin-top:10px;padding:8px 12px;background:#1c0505;border:1px solid #ef444430;border-radius:7px;font-size:11px;color:#ef4444">⚠ End time must be after start time</div>`:'';
+    return;
+  }
+  const mins=isMTTD?calcCal(t1,t2):calcBiz(t1,t2);
+  const r=fmtDur(mins,!isMTTD);
+  const sla=slaStat(mins,thr);
+  const chips=[
+    r.d>0?`<div class="chip" style="background:${accent}12;border:1px solid ${accent}22"><span style="color:${accent};font-weight:700">${r.d}</span> <span style="color:#3a4566">day${r.d>1?'s':''}</span></div>`:'',
+    r.h>0?`<div class="chip" style="background:${accent}12;border:1px solid ${accent}22"><span style="color:${accent};font-weight:700">${r.h}</span> <span style="color:#3a4566">hr${r.h>1?'s':''}</span></div>`:'',
+    r.m>0?`<div class="chip" style="background:${accent}12;border:1px solid ${accent}22"><span style="color:${accent};font-weight:700">${r.m}</span> <span style="color:#3a4566">min</span></div>`:''
+  ].join('');
+  document.getElementById(rid).innerHTML=`
+  <div class="result-card" style="background:linear-gradient(135deg,${accent}0d 0%,#060912 80%);border:1px solid ${accent}25">
+    <div class="sla-badge ${sla.cls}">${sla.label}</div>
+    <div class="result-label">${isMTTD?'MTTD — CALENDAR TIME':'MTTR — BUSINESS HOURS ONLY'}</div>
+    <div class="result-value" style="color:${accent}">${r.text}</div>
+    <div class="result-sub">${r.total} total minutes · ${isMTTD?'includes nights & weekends':'Mon–Fri 08:00–20:00 only'}</div>
+    <div class="chips">${chips}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// BULK CALC
+// ═══════════════════════════════════════════════════════
+function renderBulk(metric){
+  const isMTTD=metric==='mttd';
+  const accent=isMTTD?'#a78bfa':'#38bdf8';
+  const b=state.bulk[metric];
+  const panelId=`bulk-${metric}-panel`;
+  const label1=isMTTD?'Detection Time':'Mail Sent';
+  const label2=isMTTD?'Ack Time':'Response Time';
+
+  let tableHTML='';
+  if(b.rows.length===0){
+    tableHTML=`<div class="empty-state">No rows yet — import a CSV, paste bulk data, or add rows manually</div>`;
+  }else{
+    const rowsHTML=b.rows.map((row,i)=>{
+      const t1=row.t1, t2=row.t2;
+      let resHTML='<span style="color:#2a3455">—</span>';
+      let slaHTML='';
+      if(t1&&t2&&!isNaN(t1)&&!isNaN(t2)&&t2>t1){
+        const mins=isMTTD?calcCal(t1,t2):calcBiz(t1,t2);
+        const r=fmtDur(mins,!isMTTD);
+        const sla=slaStat(mins,240);
+        resHTML=`<span style="color:${accent};font-weight:600">${r.text}</span>`;
+        slaHTML=`<span style="font-size:9px;padding:2px 7px;border-radius:10px" class="${sla.cls}">${sla.label}</span>`;
+      }else if(t2&&t1&&t2<=t1){
+        resHTML=`<span style="color:#ef4444;font-size:10px">End before start</span>`;
+      }else if(row.t1Raw&&!t1){
+        resHTML=`<span style="color:#f59e0b;font-size:10px">Parse error T1</span>`;
+      }else if(row.t2Raw&&!t2){
+        resHTML=`<span style="color:#f59e0b;font-size:10px">Parse error T2</span>`;
+      }
+      return `<tr>
+        <td class="td"><span style="color:#2a3455">${i+1}</span></td>
+        <td class="td"><input class="td-input" value="${row.label||''}" placeholder="Label" oninput="updateBulkRow('${metric}',${i},'label',this.value)" style="width:90px"/></td>
+        <td class="td"><input class="td-input" value="${row.t1Raw||''}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t1Raw',this.value)" style="width:150px;color:${t1?'#dde6f5':'#4a5578'}"/></td>
+        <td class="td"><input class="td-input" value="${row.t2Raw||''}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t2Raw',this.value)" style="width:150px;color:${t2?'#dde6f5':'#4a5578'}"/></td>
+        <td class="td"><span style="color:${t1?'#22c55e':'#2a3455'};font-size:10px">${t1?fmtShort(t1):'—'}</span></td>
+        <td class="td"><span style="color:${t2?'#22c55e':'#2a3455'};font-size:10px">${t2?fmtShort(t2):'—'}</span></td>
+        <td class="td">${resHTML}</td>
+        <td class="td">${slaHTML}</td>
+        <td class="td"><button class="del-btn" onclick="delBulkRow('${metric}',${i})">×</button></td>
+      </tr>`;
+    }).join('');
+    tableHTML=`<div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>#</th><th>Label</th><th>${label1}</th><th>${label2}</th>
+        <th>Parsed T1</th><th>Parsed T2</th><th>Result</th><th>SLA</th><th></th>
+      </tr></thead>
+      <tbody>${rowsHTML}</tbody>
+    </table></div>`;
+  }
+
+  // Summary
+  const valid=b.rows.filter(r=>{
+    if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2)||r.t2<=r.t1)return false;
+    return true;
+  }).map(r=>({label:r.label,mins:isMTTD?calcCal(r.t1,r.t2):calcBiz(r.t1,r.t2)}));
+  let summaryHTML='';
+  if(valid.length>0){
+    const avg=Math.round(valid.reduce((a,r)=>a+r.mins,0)/valid.length);
+    const mn=valid.reduce((a,r)=>r.mins<a.mins?r:a,valid[0]);
+    const mx=valid.reduce((a,r)=>r.mins>a.mins?r:a,valid[0]);
+    const avgR=fmtDur(avg,!isMTTD),mnR=fmtDur(mn.mins,!isMTTD),mxR=fmtDur(mx.mins,!isMTTD);
+    summaryHTML=`<div class="grid3" style="margin-top:12px">
+      <div class="summary-card" style="background:${accent}0a;border:1px solid ${accent}18">
+        <div class="sum-label" style="color:#3a4566">AVG ${isMTTD?'MTTD':'MTTR'}</div>
+        <div class="sum-value" style="color:${accent}">${avgR.text}</div>
+        <div class="sum-sub">${valid.length} tickets</div>
+      </div>
+      <div class="summary-card" style="background:#22c55e0a;border:1px solid #22c55e18">
+        <div class="sum-label" style="color:#3a4566">FASTEST</div>
+        <div class="sum-value" style="color:#22c55e">${mnR.text}</div>
+        <div class="sum-sub">${mn.label||'—'}</div>
+      </div>
+      <div class="summary-card" style="background:#f59e0b0a;border:1px solid #f59e0b18">
+        <div class="sum-label" style="color:#3a4566">SLOWEST</div>
+        <div class="sum-value" style="color:#f59e0b">${mxR.text}</div>
+        <div class="sum-sub">${mx.label||'—'}</div>
+      </div>
+    </div>`;
+  }
+
+  const pastePanel=b.pasteOpen?`
+  <div class="paste-panel" style="border:1px solid ${accent}30">
+    <div class="paste-header">📋 PASTE BULK DATA — One row per line · Columns: ${label1}, ${label2} (tab / comma / pipe separated)</div>
+    <div class="paste-hint">Accepts any format: "3/6/2026 4:21:26 PM", "06-03-2026 16:21", ISO, 24h, 12h, month names...</div>
+    <textarea class="paste-area" id="pasteArea-${metric}" rows="5" placeholder="Examples:&#10;3/6/2026 4:21:26 PM&#9;3/6/2026 5:45:00 PM&#10;Ticket-002,3/7/2026 9:00 AM,3/7/2026 2:30 PM&#10;2026-03-09T09:00|2026-03-09T17:30">${b.pasteText}</textarea>
+    <div class="paste-footer">
+      <button onclick="applyPaste('${metric}')" class="tbtn" style="background:${accent};border-color:${accent};color:#fff">✓ Parse &amp; Add Rows</button>
+      <button onclick="closePaste('${metric}')" class="tbtn" style="background:#1a1f35;border-color:#2a3050;color:#4a5578">Cancel</button>
+      <span class="parse-count" id="parseCount-${metric}"></span>
+    </div>
+  </div>`:'';
+
+  document.getElementById(panelId).innerHTML=`
+  <div class="toolbar">
+    <button onclick="triggerFileInput('${metric}')" class="tbtn" style="background:#1a1f35;border-color:#4a557840;color:#4a5578">⬆ Import CSV</button>
+    <button onclick="dlTemplate('${metric}')" class="tbtn" style="background:#1a1f35;border-color:#4a557840;color:#4a5578">⬇ Template CSV</button>
+    <button onclick="exportCSV('${metric}')" class="tbtn" style="background:#1a1f35;border-color:#4a557840;color:#4a5578">📤 Export Results</button>
+    <button onclick="togglePaste('${metric}')" class="tbtn" style="background:${b.pasteOpen?accent:'#1a1f35'};border-color:${b.pasteOpen?accent:'#4a557840'};color:${b.pasteOpen?'#fff':'#4a5578'}">📋 Paste Bulk Data</button>
+    <button onclick="addBulkRow('${metric}')" class="tbtn" style="background:${accent}20;border-color:${accent}40;color:${accent}">+ Add Row</button>
+    ${b.rows.length>0?`<button onclick="clearBulk('${metric}')" class="tbtn" style="background:#1c0505;border-color:#ef444440;color:#ef4444">🗑 Clear All</button>`:''}
+    <input type="file" id="csvInput-${metric}" class="hidden" accept=".csv,.txt" onchange="handleCSVFile('${metric}',this)"/>
+  </div>
+  <div class="dropzone" id="dropzone-${metric}"
+    ondragover="event.preventDefault();this.classList.add('over')"
+    ondragleave="this.classList.remove('over')"
+    ondrop="handleDrop('${metric}',event)"
+    onclick="triggerFileInput('${metric}')">
+    <div style="font-size:20px;margin-bottom:4px">📂</div>
+    Drag &amp; drop CSV file here · or click to browse · Supports any date/time format
+  </div>
+  ${pastePanel}
+  ${tableHTML}
+  ${summaryHTML}`;
+
+  if(b.pasteOpen){
+    const ta=document.getElementById(`pasteArea-${metric}`);
+    if(ta)ta.oninput=function(){
+      state.bulk[metric].pasteText=this.value;
+      const cnt=parseBulkText(this.value).length;
+      document.getElementById(`parseCount-${metric}`).textContent=cnt>0?cnt+' rows detected':'';
+    };
+  }
+}
+
+function updateBulkRow(metric,idx,field,val){
+  const row=state.bulk[metric].rows[idx];
+  row[field]=val;
+  if(field==='t1Raw')row.t1=parseAnyDate(val);
+  if(field==='t2Raw')row.t2=parseAnyDate(val);
+  saveState();
+  renderBulk(metric);
+}
+
+function delBulkRow(metric,idx){
+  state.bulk[metric].rows.splice(idx,1);
+  saveState();
+  renderBulk(metric);
+}
+
+function addBulkRow(metric){
+  const n=state.bulk[metric].rows.length+1;
+  state.bulk[metric].rows.push({label:`Ticket-${String(n).padStart(3,'0')}`,t1Raw:'',t2Raw:'',t1:null,t2:null});
+  saveState();
+  renderBulk(metric);
+}
+
+function clearBulk(metric){
+  if(confirm('Clear all rows?')){state.bulk[metric].rows=[];saveState();renderBulk(metric);}
+}
+
+function togglePaste(metric){
+  state.bulk[metric].pasteOpen=!state.bulk[metric].pasteOpen;
+  renderBulk(metric);
+}
+
+function closePaste(metric){
+  state.bulk[metric].pasteOpen=false;
+  state.bulk[metric].pasteText='';
+  renderBulk(metric);
+}
+
+function applyPaste(metric){
+  const ta=document.getElementById(`pasteArea-${metric}`);
+  if(!ta)return;
+  const parsed=parseBulkText(ta.value);
+  const n=state.bulk[metric].rows.length;
+  parsed.forEach((p,i)=>{
+    state.bulk[metric].rows.push({
+      label:p.label||`Ticket-${String(n+i+1).padStart(3,'0')}`,
+      t1Raw:p.raw1,t2Raw:p.raw2,t1:p.date1,t2:p.date2
+    });
+  });
+  state.bulk[metric].pasteOpen=false;
+  state.bulk[metric].pasteText='';
+  saveState();
+  renderBulk(metric);
+}
+
+function parseBulkText(text){
+  if(!text.trim())return[];
+  return text.trim().split(/\r?\n/).filter(l=>l.trim()).map(line=>{
+    const parts=line.split(/\t|,|\|/).map(p=>p.trim()).filter(Boolean);
+    if(parts.length>=2){
+      const d1=parseAnyDate(parts[0]),d2=parseAnyDate(parts[1]);
+      return{raw1:parts[0],raw2:parts[1],label:parts[2]||'',date1:d1,date2:d2};
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+function triggerFileInput(metric){document.getElementById(`csvInput-${metric}`).click();}
+function handleDrop(metric,e){e.preventDefault();document.getElementById(`dropzone-${metric}`).classList.remove('over');const f=e.dataTransfer.files[0];if(f)readCSV(metric,f);}
+function handleCSVFile(metric,input){if(input.files[0])readCSV(metric,input.files[0]);}
+function readCSV(metric,file){const fr=new FileReader();fr.onload=e=>parseCSV(metric,e.target.result);fr.readAsText(file);}
+
+function parseCSV(metric,text){
+  const lines=text.trim().split(/\r?\n/);
+  if(lines.length<2)return;
+  const headers=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/^"|"$/g,''));
+  const isMTTD=metric==='mttd';
+  const fc=(...keys)=>{for(const k of keys){const i=headers.findIndex(h=>h.includes(k));if(i>=0)return i;}return -1;};
+  const t1i=isMTTD?fc('detect','detection','start','t1'):fc('sent','mail','start','t1');
+  const t2i=isMTTD?fc('ack','acknowledge','response','end','t2'):fc('resp','response','end','t2');
+  const li=fc('label','ticket','id','name','ref');
+  const c1=t1i>=0?t1i:1,c2=t2i>=0?t2i:2,cl=li>=0?li:0;
+  const n=state.bulk[metric].rows.length;
+  lines.slice(1).forEach((line,i)=>{
+    const cols=line.split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(cols.every(c=>!c))return;
+    state.bulk[metric].rows.push({
+      label:cols[cl]||`Row ${n+i+1}`,
+      t1Raw:cols[c1]||'',t2Raw:cols[c2]||'',
+      t1:parseAnyDate(cols[c1]),t2:parseAnyDate(cols[c2])
+    });
+  });
+  saveState();
+  renderBulk(metric);
+}
+
+function dlTemplate(metric){
+  const isMTTD=metric==='mttd';
+  const h1=isMTTD?'Detection Time':'Mail Sent Time',h2=isMTTD?'Acknowledgement Time':'Mail Response Time';
+  const csv=`Label,${h1},${h2}\nTicket-001,3/6/2026 4:21:26 PM,3/6/2026 5:45:00 PM\nTicket-002,3/7/2026 9:00:00 AM,3/7/2026 2:30:00 PM\nTicket-003,06-03-2026 08:15:00,06-03-2026 11:45:00`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`${metric.toUpperCase()}_template.csv`;a.click();
+}
+
+function exportCSV(metric){
+  const isMTTD=metric==='mttd';
+  const h1=isMTTD?'Detection Time':'Mail Sent Time',h2=isMTTD?'Acknowledgement Time':'Mail Response Time';
+  const rows=state.bulk[metric].rows;
+  const header=`Label,${h1},${h2},Result,Minutes,SLA`;
+  const lines=rows.map(r=>{
+    if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2)||r.t2<=r.t1)return null;
+    const mins=isMTTD?calcCal(r.t1,r.t2):calcBiz(r.t1,r.t2);
+    const res=fmtDur(mins,!isMTTD);
+    const sla=slaStat(mins,240);
+    return[r.label,fmtDisplay(r.t1),fmtDisplay(r.t2),res.text,mins,sla.label].map(v=>`"${v}"`).join(',');
+  }).filter(Boolean);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([[header,...lines].join('\n')],{type:'text/csv'}));
+  a.download=`${metric.toUpperCase()}_results_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+}
+
+// ═══════════════════════════════════════════════════════
+// TEAM / WORKSPACE
+// ═══════════════════════════════════════════════════════
+function showTeam(){
+  const ws=JSON.parse(localStorage.getItem('sla_ws')||'{"name":"Default Team","member":"Me"}');
+  document.getElementById('wsNameInput').value=ws.name;
+  document.getElementById('wsMemberInput').value=ws.member;
+  document.getElementById('teamModal').classList.remove('hidden');
+}
+function hideTeam(){document.getElementById('teamModal').classList.add('hidden');}
+function saveWorkspace(){
+  const ws={name:document.getElementById('wsNameInput').value||'Default Team',member:document.getElementById('wsMemberInput').value||'Me'};
+  localStorage.setItem('sla_ws',JSON.stringify(ws));
+  document.getElementById('wsName').textContent=ws.name;
+  document.getElementById('wsMember').textContent=ws.member;
+  document.getElementById('teamMsg').innerHTML='<div class="msg msg-ok">✓ Workspace settings saved</div>';
+  setTimeout(()=>document.getElementById('teamMsg').innerHTML='',2000);
+}
+function exportWS(){
+  const data=localStorage.getItem('sla_bulk')||'{}';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+  a.download=`sla_workspace_${new Date().toISOString().slice(0,10)}.json`;a.click();
+}
+function importWS(input){
+  const fr=new FileReader();
+  fr.onload=e=>{
+    try{JSON.parse(e.target.result);localStorage.setItem('sla_bulk',e.target.result);
+      document.getElementById('teamMsg').innerHTML='<div class="msg msg-ok">✓ Imported — refresh page to see data</div>';
+    }catch{document.getElementById('teamMsg').innerHTML='<div class="msg msg-err">✗ Invalid workspace file</div>';}
+  };
+  fr.readAsText(input.files[0]);
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+switchTab('single-mttd');
+</script>
+</body>
+</html>
