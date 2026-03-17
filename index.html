@@ -1,1 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SLA Console · MTTD & MTTR</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:#f5f6fa;color:#1a1a2e;font-family:Calibri,'Calibri',Candara,'Segoe UI',Arial,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+input,textarea,select,button{font-family:inherit;font-size:13px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#f0f1f5}
+::-webkit-scrollbar-thumb{background:#c5c9d8;border-radius:3px}
+.topbar{background:#fff;border-bottom:2px solid #e2e5ef;padding:0 24px;display:flex;align-items:center;height:52px;gap:16px;position:sticky;top:0;z-index:50;box-shadow:0 1px 4px #0001}
+.logo-icon{width:32px;height:32px;border-radius:7px;background:linear-gradient(135deg,#2563eb,#0891b2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;color:#fff}
+.logo-title{font-size:15px;font-weight:700;color:#1a1a2e;line-height:1}
+.logo-sub{font-size:10px;color:#8b90a7;letter-spacing:0.08em;margin-top:1px;text-transform:uppercase}
+.nav{display:flex;gap:2px;flex:1;overflow-x:auto}
+.nav-btn{padding:6px 16px;border:none;border-bottom:3px solid transparent;background:transparent;color:#6b7280;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all 0.15s}
+.nav-btn:hover{color:#1a1a2e;background:#f5f6fa}
+.nav-btn.active-mttd{color:#2563eb;border-bottom-color:#2563eb;background:#eff6ff}
+.nav-btn.active-mttr{color:#0891b2;border-bottom-color:#0891b2;background:#ecfeff}
+.team-btn{padding:6px 14px;background:#f5f6fa;border:1px solid #dde1ee;border-radius:6px;color:#4b5563;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.15s}
+.team-btn:hover{background:#e9ebf5}
+.infobar{background:#fff;border-bottom:1px solid #e9ebf5;padding:5px 24px;display:flex;gap:20px;flex-wrap:wrap}
+.info-item{display:flex;gap:5px;align-items:center;font-size:11px}
+.info-label{font-weight:700}
+.info-desc{color:#6b7280}
+.main{max-width:1100px;width:100%;margin:0 auto;padding:20px 24px}
+.section-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.section-bar{width:4px;height:28px;border-radius:2px}
+.section-title{font-size:18px;font-weight:700;color:#1a1a2e}
+.section-sub{font-size:11px;color:#6b7280;margin-top:2px}
+.panel{background:#fff;border:1px solid #e2e5ef;border-radius:12px;padding:20px;box-shadow:0 1px 3px #0001}
+.footer{border-top:1px solid #e9ebf5;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9ca3af;margin-top:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.date-card{background:#f9fafb;border:1px solid #e2e5ef;border-radius:9px;padding:14px 16px;transition:border-color 0.2s}
+.date-card.valid-mttd{border-color:#2563eb60;background:#eff6ff}
+.date-card.valid-mttr{border-color:#0891b260;background:#ecfeff}
+.date-card.error{border-color:#ef444460;background:#fff5f5}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.card-label{display:flex;align-items:center;gap:6px;font-size:11px;color:#4b5563;font-weight:700;text-transform:uppercase;letter-spacing:0.06em}
+.mode-btns{display:flex;gap:4px}
+.mode-btn{padding:3px 10px;border-radius:4px;border:1px solid #dde1ee;cursor:pointer;font-size:11px;font-family:inherit;font-weight:600;background:#fff;color:#6b7280;transition:all 0.15s}
+.date-input{width:100%;background:#fff;border:1px solid #dde1ee;border-radius:6px;padding:8px 11px;color:#1a1a2e;font-size:13px;font-family:inherit;outline:none;transition:border-color 0.2s}
+.date-input:focus{border-color:#2563eb;box-shadow:0 0 0 2px #2563eb15}
+.status-row{margin-top:7px;min-height:18px;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tag-green{color:#16a34a;font-weight:600}
+.tag-yellow{color:#d97706;font-weight:600}
+.tag-red{color:#dc2626;font-weight:600}
+.tag-dim{color:#9ca3af;font-size:11px}
+.result-card{border-radius:10px;padding:20px 24px;text-align:center;margin-top:14px;border:1px solid}
+.result-label{font-size:11px;color:#6b7280;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;font-weight:700}
+.result-value{font-size:42px;font-weight:700;line-height:1.1}
+.result-sub{font-size:11px;color:#9ca3af;margin-top:6px}
+.breakdown-grid{display:grid;gap:8px;margin-top:14px}
+.breakdown-row{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:6px;padding:8px 14px;border:1px solid #e9ebf5}
+.breakdown-label{font-size:12px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.06em}
+.breakdown-val{font-size:16px;font-weight:700}
+.breakdown-unit{font-size:12px;color:#9ca3af;font-weight:400}
+.sla-badge{display:inline-block;border-radius:20px;padding:3px 14px;font-size:11px;font-weight:700;letter-spacing:0.08em;margin-bottom:10px}
+.sla-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.sla-risk{background:#fffbeb;border:1px solid #fde68a;color:#b45309}
+.sla-breach{background:#fff1f2;border:1px solid #fecdd3;color:#be123c}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tbtn{border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;padding:7px 13px;border:1px solid;transition:all 0.15s}
+.tbtn:hover{opacity:0.85}
+.dropzone{border:2px dashed #dde1ee;border-radius:9px;padding:14px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:12px;font-size:12px;color:#6b7280;background:#fafbfc}
+.dropzone:hover,.dropzone.over{border-color:#2563eb;background:#eff6ff;color:#2563eb}
+.tbl-wrap{overflow-x:auto;border-radius:9px;border:1px solid #e2e5ef}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:#f5f6fa;border-bottom:2px solid #e2e5ef}
+th{padding:9px 10px;text-align:left;font-size:11px;color:#4b5563;font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:0.04em}
+tbody tr{border-bottom:1px solid #f0f1f5;transition:background 0.1s}
+tbody tr:hover{background:#f9fafb}
+td{padding:7px 10px;vertical-align:middle;color:#1a1a2e}
+.td-input{width:100%;background:transparent;border:none;color:#1a1a2e;font-family:inherit;font-size:12px;outline:none;padding:0;min-width:0}
+.del-btn{background:none;border:none;color:#d1d5db;cursor:pointer;font-size:15px;padding:0 4px;transition:color 0.15s}
+.del-btn:hover{color:#dc2626}
+.empty-state{border:2px dashed #e2e5ef;border-radius:9px;padding:28px;text-align:center;color:#9ca3af;font-size:13px;background:#fafbfc}
+.paste-panel{background:#f9fafb;border-radius:9px;padding:14px;margin-bottom:12px;border:1px solid #e2e5ef}
+.paste-header{font-size:12px;color:#374151;margin-bottom:5px;font-weight:700}
+.paste-hint{font-size:11px;color:#9ca3af;margin-bottom:8px}
+.paste-area{width:100%;background:#fff;border:1px solid #dde1ee;border-radius:6px;padding:10px 12px;color:#1a1a2e;font-size:12px;font-family:inherit;outline:none;resize:vertical}
+.paste-area:focus{border-color:#2563eb;box-shadow:0 0 0 2px #2563eb15}
+.paste-footer{margin-top:8px;display:flex;gap:8px;align-items:center}
+.parse-count{font-size:11px;color:#2563eb;font-weight:600}
+.sla-row{margin-top:10px;display:flex;align-items:center;gap:10px;font-size:12px;color:#4b5563;font-weight:600}
+.sla-input{width:80px;background:#fff;border:1px solid #dde1ee;border-radius:5px;padding:4px 8px;font-size:12px;outline:none;font-family:inherit;font-weight:600;color:#1a1a2e}
+.sla-input:focus{border-color:#2563eb}
+.summary-card{border-radius:9px;padding:14px 18px;text-align:center;border:1px solid}
+.sum-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;color:#6b7280}
+.sum-value{font-size:24px;font-weight:700;line-height:1.1}
+.sum-sub{font-size:11px;color:#9ca3af;margin-top:3px}
+.fmt-ref{margin-top:14px;background:#fff;border:1px solid #e2e5ef;border-radius:9px;padding:12px 16px}
+.fmt-title{font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:7px}
+.fmt-chips{display:flex;gap:5px;flex-wrap:wrap}
+.fmt-chip{font-size:11px;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:2px 8px;font-weight:600}
+.modal-overlay{position:fixed;inset:0;background:#1a1a2e99;backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border:1px solid #e2e5ef;border-radius:12px;padding:26px;width:460px;max-width:95vw;box-shadow:0 8px 32px #0003}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-title{font-size:17px;font-weight:700;color:#1a1a2e}
+.modal-sub{font-size:11px;color:#6b7280;margin-top:2px;text-transform:uppercase;letter-spacing:0.07em}
+.close-btn{background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer}
+.close-btn:hover{color:#374151}
+.field-label{font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;display:block;margin-bottom:5px}
+.field-input{width:100%;background:#f9fafb;border:1px solid #dde1ee;border-radius:6px;padding:9px 12px;color:#1a1a2e;font-family:inherit;font-size:13px;outline:none}
+.field-input:focus{border-color:#2563eb;background:#fff}
+.field-group{margin-bottom:12px}
+.msg{padding:8px 12px;border-radius:7px;font-size:12px;margin-top:10px;font-weight:600}
+.msg-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.msg-err{background:#fff1f2;border:1px solid #fecdd3;color:#be123c}
+.share-section{border-top:1px solid #e9ebf5;padding-top:14px;margin-top:14px}
+.share-label{font-size:12px;color:#374151;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em}
+.share-btns{display:flex;gap:8px}
+.share-tip{font-size:11px;color:#9ca3af;margin-top:8px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <div class="logo-icon">⚡</div>
+    <div><div class="logo-title">SLA Console</div><div class="logo-sub">MTTD &amp; MTTR Automation</div></div>
+  </div>
+  <nav class="nav">
+    <button class="nav-btn" data-tab="single-mttd" onclick="switchTab('single-mttd')">🔍 MTTD · Single</button>
+    <button class="nav-btn" data-tab="bulk-mttd"   onclick="switchTab('bulk-mttd')">📊 MTTD · Bulk</button>
+    <button class="nav-btn" data-tab="single-mttr" onclick="switchTab('single-mttr')">📤 MTTR · Single</button>
+    <button class="nav-btn" data-tab="bulk-mttr"   onclick="switchTab('bulk-mttr')">📈 MTTR · Bulk</button>
+  </nav>
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <div style="font-size:11px;text-align:right">
+      <div id="wsName" style="color:#374151;font-weight:700">Default Team</div>
+      <div id="wsMember" style="color:#9ca3af">Me</div>
+    </div>
+    <button class="team-btn" onclick="showTeam()">👥 Team</button>
+  </div>
+</header>
+<div class="infobar">
+  <div class="info-item"><span class="info-label" style="color:#2563eb">MTTD</span><span class="info-desc">· Calendar time · Detection → Acknowledgement · All hours including weekends</span></div>
+  <div class="info-item"><span class="info-label" style="color:#0891b2">MTTR</span><span class="info-desc">· Weekday biz hours 08:00–20:00 only · Weekends excluded · Off-hours sent = biz hours counted from next window open</span></div>
+  <div class="info-item"><span class="info-label" style="color:#059669">PRECISION</span><span class="info-desc">· Seconds-level accuracy · Days / Hours / Minutes / Seconds breakdown</span></div>
+</div>
+<div class="main">
+  <div class="section-header">
+    <div class="section-bar" id="sectionBar"></div>
+    <div><div class="section-title" id="sectionTitle"></div><div class="section-sub" id="sectionSub"></div></div>
+  </div>
+  <div class="panel">
+    <div id="tab-single-mttd" class="tab-panel">
+      <div class="grid2"><div id="card-smttd-t1"></div><div id="card-smttd-t2"></div></div>
+      <div class="sla-row">SLA Threshold: <input class="sla-input" id="sla-smttd" type="number" value="240" oninput="calcSingle('mttd')"/> minutes</div>
+      <div id="result-smttd"></div>
+    </div>
+    <div id="tab-bulk-mttd" class="tab-panel hidden"><div id="bulk-mttd-panel"></div></div>
+    <div id="tab-single-mttr" class="tab-panel hidden">
+      <div class="grid2"><div id="card-smttr-t1"></div><div id="card-smttr-t2"></div></div>
+      <div class="sla-row">SLA Threshold: <input class="sla-input" id="sla-smttr" type="number" value="240" oninput="calcSingle('mttr')"/> minutes</div>
+      <div id="result-smttr"></div>
+    </div>
+    <div id="tab-bulk-mttr" class="tab-panel hidden"><div id="bulk-mttr-panel"></div></div>
+  </div>
+  <div class="fmt-ref">
+    <div class="fmt-title">Supported Date / Time Formats — Paste Any of These Directly (Seconds Captured)</div>
+    <div class="fmt-chips">
+      <span class="fmt-chip">3/6/2026 4:21:26 PM</span>
+      <span class="fmt-chip">3/6/2026 13:39:45</span>
+      <span class="fmt-chip">06-03-2026 16:21:26</span>
+      <span class="fmt-chip">2026-03-06T13:39:00</span>
+      <span class="fmt-chip">06/03/2026 04:21:26 PM</span>
+      <span class="fmt-chip">March 6 2026 4:21:26 PM</span>
+      <span class="fmt-chip">06 Mar 2026 16:21:26</span>
+      <span class="fmt-chip">Unix timestamp</span>
+    </div>
+  </div>
+</div>
+<div class="footer">
+  <span>SLA Console · MTTD &amp; MTTR Automation · IST Timezone</span>
+  <span>Business Hours: Mon–Fri 08:00–20:00 · Weekends excluded · Response on weekend = raw diff</span>
+</div>
+<div class="modal-overlay hidden" id="teamModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div><div class="modal-title">Team Workspace</div><div class="modal-sub">Local storage · Share via JSON export</div></div>
+      <button class="close-btn" onclick="hideTeam()">×</button>
+    </div>
+    <div class="field-group"><label class="field-label">Team / Project Name</label><input class="field-input" id="wsNameInput" placeholder="e.g. Ops Team · Q1 2026"/></div>
+    <div class="field-group"><label class="field-label">Your Name / Member ID</label><input class="field-input" id="wsMemberInput" placeholder="e.g. Priya · Analyst"/></div>
+    <button onclick="saveWorkspace()" class="tbtn" style="width:100%;background:#eff6ff;border-color:#bfdbfe;color:#2563eb">💾 Save Settings</button>
+    <div class="share-section">
+      <div class="share-label">Share Workspace Data</div>
+      <div class="share-btns">
+        <button onclick="exportWS()" class="tbtn" style="flex:1;background:#ecfeff;border-color:#a5f3fc;color:#0891b2">⬆ Export JSON</button>
+        <button onclick="document.getElementById('wsFile').click()" class="tbtn" style="flex:1;background:#eff6ff;border-color:#bfdbfe;color:#2563eb">⬇ Import JSON</button>
+        <input type="file" id="wsFile" class="hidden" accept=".json" onchange="importWS(this)"/>
+      </div>
+      <div class="share-tip">💡 Export JSON → Send to teammates → They import it → All data shared</div>
+    </div>
+    <div id="teamMsg"></div>
+  </div>
+</div>
+<script>
+// ── DATE PARSER (seconds-accurate, any format) ──────────────────────────────
+const MONTHS={jan:0,january:0,feb:1,february:1,mar:2,march:2,apr:3,april:3,may:4,jun:5,june:5,jul:6,july:6,aug:7,august:7,sep:8,september:8,oct:9,october:9,nov:10,november:10,dec:11,december:11};
+function applyAP(h,ap){if(!ap)return h;const u=ap.toUpperCase();if(u==='PM'&&h<12)return h+12;if(u==='AM'&&h===12)return 0;return h;}
+function parseAnyDate(s){
+  if(!s||!s.trim())return null;
+  s=s.trim().replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g,'').trim();
+  // Native JS
+  const n=new Date(s);
+  if(!isNaN(n)&&n.getFullYear()>1970&&n.getFullYear()<2100)return n;
+  // M/D/YYYY H:MM:SS AM/PM — Excel default
+  let m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?$/i);
+  if(m){let[,p1,p2,yr,hr,mn,sc='0',ap]=m;sc=parseFloat(sc)||0;let mo,dy;if(+p1>12){dy=+p1;mo=+p2-1;}else{mo=+p1-1;dy=+p2;}return new Date(+yr,mo,dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
+  // M/D/YYYY date only
+  m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if(m){let[,p1,p2,yr]=m;let mo,dy;if(+p1>12){dy=+p1;mo=+p2-1;}else{mo=+p1-1;dy=+p2;}return new Date(+yr,mo,dy,0,0,0);}
+  // YYYY-MM-DD with optional time
+  m=s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?)?$/i);
+  if(m){let[,yr,mo,dy,hr='0',mn='0',sc='0',ap]=m;sc=parseFloat(sc)||0;return new Date(+yr,+mo-1,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
+  // DD MMM YYYY
+  m=s.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?)?$/i);
+  if(m){let[,dy,mon,yr,hr='0',mn='0',sc='0',ap]=m;sc=parseFloat(sc)||0;const mo=MONTHS[mon.toLowerCase()];if(mo!==undefined)return new Date(+yr,mo,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
+  // MMM DD YYYY
+  m=s.match(/^([a-z]+)\s+(\d{1,2})[,\s]+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?)?$/i);
+  if(m){let[,mon,dy,yr,hr='0',mn='0',sc='0',ap]=m;sc=parseFloat(sc)||0;const mo=MONTHS[mon.toLowerCase()];if(mo!==undefined)return new Date(+yr,mo,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
+  // Unix
+  if(/^\d{10}$/.test(s))return new Date(+s*1000);
+  if(/^\d{13}$/.test(s))return new Date(+s);
+  return null;
+}
+function fmtDisplay(d){if(!d||isNaN(d))return '—';return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST';}
+function fmtShort(d){if(!d||isNaN(d))return '—';return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});}
+function toInputVal(d){if(!d||isNaN(d))return '';const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
+// ── CALCULATIONS (seconds-level) ─────────────────────────────────────────────
+const BIZ_S=8,BIZ_E=20,BIZ_HPD=BIZ_E-BIZ_S;
+const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const isSunday=d=>d.getDay()===0;
+const isSaturday=d=>d.getDay()===6;
+const isWknd=d=>d.getDay()===0||d.getDay()===6;
+function sod(d){return d.getHours()*3600+d.getMinutes()*60+d.getSeconds();}
+function isInBizWindow(d){if(isWknd(d))return false;const s=sod(d);return s>=BIZ_S*3600&&s<BIZ_E*3600;}
+function nextDay(d){const n=new Date(d);n.setDate(n.getDate()+1);n.setHours(0,0,0,0);return n;}
 
+function calcBizSecs(start,end){
+  if(!start||!end||isNaN(start)||isNaN(end)||end<=start)return 0;
+
+  // Weekend = Saturday OR Sunday (both fully excluded from biz hours)
+  const isWeekendDay = d => d.getDay()===0 || d.getDay()===6;
+
+  // Is a date within Mon–Fri 08:00–20:00?
+  const inBiz = d => !isWeekendDay(d) && sod(d)>=BIZ_S*3600 && sod(d)<BIZ_E*3600;
+
+  const sentInBiz  = inBiz(start);
+  const respOnWknd = isWeekendDay(end);
+
+  // ─────────────────────────────────────────────────────────────────
+  // RULE 4: Sent on weekday off-hours AND response on weekend
+  //         → raw difference (no biz filtering at all)
+  // ─────────────────────────────────────────────────────────────────
+  if(!sentInBiz && respOnWknd){
+    return Math.round((end-start)/1000);
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // RULE 3: Sent on weekday off-hours AND response is on a weekday
+  //         (biz hours or after-hours on a weekday)
+  //         → count only Mon–Fri 08:00–20:00 biz hours from the
+  //           NEXT biz window opening after sent time, up to response
+  // ─────────────────────────────────────────────────────────────────
+  if(!sentInBiz && !respOnWknd){
+    // Find the first biz window start AFTER the sent time
+    // (could be same day at 08:00 if sent before 08:00, or next weekday 08:00)
+    let bizOpen = new Date(start);
+    // If sent before 08:00 on a weekday, open is 08:00 same day
+    if(!isWeekendDay(bizOpen) && sod(bizOpen) < BIZ_S*3600){
+      bizOpen.setHours(BIZ_S,0,0,0);
+    } else {
+      // Sent after 20:00 on weekday, or on weekend (already ruled out weekend resp above)
+      // → next weekday 08:00
+      bizOpen.setDate(bizOpen.getDate()+1);
+      bizOpen.setHours(BIZ_S,0,0,0);
+      while(isWeekendDay(bizOpen)) bizOpen.setDate(bizOpen.getDate()+1);
+    }
+    // If biz window opens after the response, 0 biz time elapsed
+    if(bizOpen >= end) return 0;
+    // Now count biz seconds from bizOpen to end (same logic as Rule 1/2 below)
+    start = bizOpen;
+    // Fall through to the day-by-day counter below
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // RULE 1 & 2: Sent on weekday biz hours (or adjusted start above)
+  //   - Count Mon–Fri 08:00–20:00 seconds day by day
+  //   - Weekends (Sat/Sun) fully skipped
+  //   - If response is after 20:00 on response day → count full raw
+  //     diff from last biz window start on that day to response
+  //     (handles: sent in-hours, response same day after 20:00)
+  // ─────────────────────────────────────────────────────────────────
+  let tot = 0;
+  let cur = new Date(start);
+
+  for(let g=0; g<10000; g++){
+    if(cur >= end) break;
+
+    const day = cur.getDay();
+
+    // Skip Saturday and Sunday entirely
+    if(day===0 || day===6){
+      const n = new Date(cur);
+      n.setDate(n.getDate()+1);
+      n.setHours(0,0,0,0);
+      cur = n;
+      continue;
+    }
+
+    // Weekday window: 08:00–20:00
+    const winS = BIZ_S*3600;
+    const winE = BIZ_E*3600;
+    const isLastDay = cur.toDateString()===end.toDateString();
+
+    if(isLastDay){
+      const fromSod = sod(cur);
+      const toSod   = sod(end);
+      if(toSod > winE){
+        // Response after 20:00 on this day
+        // Count from effective biz start to response (raw diff for after-hours portion)
+        const effectiveFrom = Math.max(fromSod, winS);
+        tot += Math.max(0, toSod - effectiveFrom);
+      } else {
+        // Response within 08:00–20:00 — count only that window portion
+        const a = Math.max(fromSod, winS);
+        const b = Math.min(toSod,   winE);
+        tot += Math.max(0, b - a);
+      }
+      break;
+    } else {
+      // Not the last day — count only the biz window for this day
+      const curSod = sod(cur);
+      if(curSod < winE){
+        const a = Math.max(curSod, winS);
+        tot += Math.max(0, winE - a);
+      }
+      cur = nextDay(cur);
+    }
+  }
+  return Math.round(tot);
+}
+function calcCalSecs(s,e){if(!s||!e||isNaN(s)||isNaN(e)||e<=s)return 0;return Math.round((e-s)/1000);}
+function fmtSecs(totalSecs,bizOnly){
+  if(totalSecs<=0)return{text:'0s',hhmmss:'00:00:00',long:'0 seconds',d:0,h:0,m:0,s:0,total:0,mins:0,totalHours:'0.00'};
+  const secsPerDay=bizOnly?BIZ_HPD*3600:86400;
+  const d=Math.floor(totalSecs/secsPerDay);
+  let rem=totalSecs%secsPerDay;
+  const h=Math.floor(rem/3600);rem%=3600;
+  const m=Math.floor(rem/60);
+  const s=rem%60;
+  // Short text: 1d 2h 30m 5s
+  const p=[];if(d>0)p.push(d+'d');if(h>0)p.push(h+'h');if(m>0)p.push(m+'m');if(s>0||p.length===0)p.push(s+'s');
+  // hh:mm:ss — always use raw total seconds → total clock hours (never capped at 24)
+  // e.g. 2 days 2h 30m 5s (biz) = 2*12+2=26h → 26:30:05
+  // e.g. 2 days 2h 30m 5s (cal) = 2*24+2=50h → 50:30:05
+  const totalHours=d*(bizOnly?BIZ_HPD:24)+h;
+  const pp=n=>String(n).padStart(2,'0');
+  const hhmmss=`${pp(totalHours)}:${pp(m)}:${pp(s)}`;
+  // Long human text: X day(s) X hour(s) X min(s) X sec(s)
+  const lp=[];
+  if(d>0)lp.push(`${d} day${d!==1?'s':''}`);
+  if(h>0)lp.push(`${h} hour${h!==1?'s':''}`);
+  if(m>0)lp.push(`${m} min${m!==1?'s':''}`);
+  if(s>0||lp.length===0)lp.push(`${s} second${s!==1?'s':''}`);
+  const long=lp.join(' ');
+  const totalHoursDec=(totalSecs/3600).toFixed(2);
+  return{text:p.join(' '),hhmmss,long,d,h,m,s,total:totalSecs,mins:Math.round(totalSecs/60),totalHours:totalHoursDec};
+}
+function slaStat(secs,thrMins){const r=secs/(thrMins*60);if(r<=0.5)return{label:'WITHIN SLA',cls:'sla-ok'};if(r<=1)return{label:'AT RISK',cls:'sla-risk'};return{label:'SLA BREACH',cls:'sla-breach'};}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ── STATE ─────────────────────────────────────────────────────────────────────
+const state={activeTab:'single-mttd',single:{mttd:{t1:null,t2:null},mttr:{t1:null,t2:null}},bulk:{mttd:{rows:[],pasteOpen:false,pasteText:''},mttr:{rows:[],pasteOpen:false,pasteText:''}}};
+try{const saved=JSON.parse(localStorage.getItem('sla_bulk')||'{}');['mttd','mttr'].forEach(m=>{if(saved[m])state.bulk[m].rows=saved[m].map(r=>({...r,t1:r.t1?new Date(r.t1):null,t2:r.t2?new Date(r.t2):null}));});const ws=JSON.parse(localStorage.getItem('sla_ws')||'{"name":"Default Team","member":"Me"}');document.getElementById('wsName').textContent=ws.name;document.getElementById('wsMember').textContent=ws.member;}catch(e){}
+function saveState(){try{const d={};['mttd','mttr'].forEach(m=>{d[m]=state.bulk[m].rows.map(r=>({...r,t1:r.t1?r.t1.toISOString():null,t2:r.t2?r.t2.toISOString():null}));});localStorage.setItem('sla_bulk',JSON.stringify(d));}catch(e){}}
+// ── TABS ──────────────────────────────────────────────────────────────────────
+const tabMeta={'single-mttd':{metric:'mttd',mode:'single',label:'MTTD · Single Entry',sub:'Mean Time To Detect · Raw calendar time including weekends & nights · Seconds precision',accent:'#2563eb',accentCls:'mttd'},'bulk-mttd':{metric:'mttd',mode:'bulk',label:'MTTD · Bulk Calculate',sub:'Mean Time To Detect · Import CSV, paste timestamps, or enter manually',accent:'#2563eb',accentCls:'mttd'},'single-mttr':{metric:'mttr',mode:'single',label:'MTTR · Single Entry',sub:'Mean Time To Respond · Business hours only (08:00–20:00, Mon–Fri IST) · Seconds precision',accent:'#0891b2',accentCls:'mttr'},'bulk-mttr':{metric:'mttr',mode:'bulk',label:'MTTR · Bulk Calculate',sub:'Mean Time To Respond · Import CSV, paste timestamps, or enter manually',accent:'#0891b2',accentCls:'mttr'}};
+function switchTab(t){state.activeTab=t;document.querySelectorAll('.tab-panel').forEach(p=>p.classList.add('hidden'));document.getElementById('tab-'+t).classList.remove('hidden');document.querySelectorAll('.nav-btn').forEach(b=>{b.classList.remove('active-mttd','active-mttr');});const meta=tabMeta[t];document.querySelector(`[data-tab="${t}"]`).classList.add('active-'+meta.accentCls);document.getElementById('sectionBar').style.background=`linear-gradient(180deg,${meta.accent},${meta.accent}66)`;document.getElementById('sectionTitle').style.color=meta.accent;document.getElementById('sectionTitle').textContent=meta.label;document.getElementById('sectionSub').textContent=meta.sub;if(meta.mode==='single')renderSingleCards(meta.metric);else renderBulk(meta.metric);}
+// ── SINGLE ────────────────────────────────────────────────────────────────────
+function renderSingleCards(metric){const isMTTD=metric==='mttd';const accent=isMTTD?'#2563eb':'#0891b2';renderDateCard(`card-s${metric}-t1`,isMTTD?'🔍':'📤',isMTTD?'Detection Time (IST)':'Mail Sent Time (IST)',metric,'t1',accent);renderDateCard(`card-s${metric}-t2`,isMTTD?'✅':'📥',isMTTD?'Acknowledgement Time (IST)':'Mail Response Time (IST)',metric,'t2',accent);calcSingle(metric);}
+function renderDateCard(cid,icon,label,metric,which,accent){const id=`dc-${metric}-${which}`;const val=state.single[metric][which];document.getElementById(cid).innerHTML=`<div class="date-card" id="${id}"><div class="card-header"><div class="card-label"><span>${icon}</span> ${label}</div><div class="mode-btns"><button class="mode-btn" id="${id}-paste-btn" onclick="setCardMode('${id}','paste','${metric}','${which}')">✏ Paste</button><button class="mode-btn" id="${id}-picker-btn" onclick="setCardMode('${id}','picker','${metric}','${which}')">📅 Picker</button></div></div><input class="date-input" id="${id}-input" type="text" placeholder="Paste any format: 3/6/2026 4:21:26 PM or 06-03-2026 16:21:26..." oninput="onDateInput(this,'${metric}','${which}','paste')" value="${val?esc(val.toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true})):''}"/><div class="status-row" id="${id}-status"></div></div>`;document.getElementById(`${id}-paste-btn`).style.cssText=`background:${accent};color:#fff;border-color:${accent};font-weight:700`;if(val)updateCardStatus(id,val);}
+function setCardMode(id,mode,metric,which){const pb=document.getElementById(`${id}-paste-btn`);const kb=document.getElementById(`${id}-picker-btn`);const inp=document.getElementById(`${id}-input`);const accent=metric==='mttd'?'#2563eb':'#0891b2';const val=state.single[metric][which];if(mode==='paste'){pb.style.cssText=`background:${accent};color:#fff;border-color:${accent};font-weight:700`;kb.style.cssText='background:#fff;color:#6b7280;border-color:#dde1ee;font-weight:600';inp.type='text';inp.placeholder='Paste any format: 3/6/2026 4:21:26 PM or 06-03-2026 16:21:26...';inp.oninput=function(){onDateInput(this,metric,which,'paste')};if(val)inp.value=val.toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});}else{kb.style.cssText=`background:${accent};color:#fff;border-color:${accent};font-weight:700`;pb.style.cssText='background:#fff;color:#6b7280;border-color:#dde1ee;font-weight:600';inp.type='datetime-local';inp.oninput=function(){onDateInput(this,metric,which,'picker')};if(val)inp.value=toInputVal(val);}}
+function onDateInput(el,metric,which,mode){let d=mode==='picker'?(el.value?new Date(el.value):null):parseAnyDate(el.value);state.single[metric][which]=d&&!isNaN(d)?d:null;const id=`dc-${metric}-${which}`;const card=document.getElementById(id);if(d&&!isNaN(d)){card.className='date-card valid-'+metric;updateCardStatus(id,d);}else{card.className='date-card'+(el.value.trim()?' error':'');document.getElementById(`${id}-status`).innerHTML=el.value.trim()?'<span class="tag-red">⚠ Cannot parse — try another format</span>':'';}calcSingle(metric);}
+function updateCardStatus(id,d){const wknd=isWknd(d);document.getElementById(`${id}-status`).innerHTML=`<span class="${wknd?'tag-yellow':'tag-green'}">${wknd?'⚠':'✓'} ${DAY[d.getDay()]}${wknd?' (Weekend)':' (Weekday)'}</span><span style="color:#d1d5db"> · </span><span class="tag-dim">${fmtDisplay(d)}</span>`;}
+function calcSingle(metric){
+  const isMTTD=metric==='mttd';const t1=state.single[metric].t1,t2=state.single[metric].t2;
+  const accent=isMTTD?'#2563eb':'#0891b2';const accentBg=isMTTD?'#eff6ff':'#ecfeff';const accentBorder=isMTTD?'#bfdbfe':'#a5f3fc';
+  const rid=`result-s${metric}`;const thr=parseInt(document.getElementById(`sla-s${metric}`).value)||240;
+  if(!t1||!t2||t2<=t1){document.getElementById(rid).innerHTML=t1&&t2&&t2<=t1?`<div style="margin-top:10px;padding:8px 12px;background:#fff1f2;border:1px solid #fecdd3;border-radius:7px;font-size:12px;color:#be123c;font-weight:600">⚠ End time must be after start time</div>`:'';return;}
+  const secs=isMTTD?calcCalSecs(t1,t2):calcBizSecs(t1,t2);
+  const r=fmtSecs(secs,!isMTTD);const sla=slaStat(secs,thr);
+  const parts=[{lbl:'Days',val:r.d,unit:'day'+(r.d!==1?'s':'')},{lbl:'Hours',val:r.h,unit:'hour'+(r.h!==1?'s':'')},{lbl:'Minutes',val:r.m,unit:'minute'+(r.m!==1?'s':'')},{lbl:'Seconds',val:r.s,unit:'second'+(r.s!==1?'s':'')}];
+  const breakHTML=parts.map(x=>`<div class="breakdown-row"><span class="breakdown-label">${x.lbl}</span><span class="breakdown-val" style="color:${accent}">${x.val} <span class="breakdown-unit">${x.unit}</span></span></div>`).join('');
+  document.getElementById(rid).innerHTML=`
+  <div class="result-card" style="background:${accentBg};border-color:${accentBorder}">
+    <div class="sla-badge ${sla.cls}">${sla.label}</div>
+    <div class="result-label">${isMTTD?'MTTD — CALENDAR TIME':'MTTR — BUSINESS HOURS ONLY'}</div>
+
+    <!-- PRIMARY: hh:mm:ss -->
+    <div style="margin-bottom:4px">
+      <div style="font-size:11px;color:#9ca3af;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">HH : MM : SS</div>
+      <div class="result-value" style="color:${accent};font-size:46px;letter-spacing:0.08em;font-variant-numeric:tabular-nums">${r.hhmmss}</div>
+    </div>
+
+    <!-- SECONDARY: human long format -->
+    <div style="margin:10px 0 6px;padding:8px 16px;background:#fff;border-radius:7px;border:1px solid ${accentBorder};font-size:15px;font-weight:700;color:${accent}">
+      ${r.long}
+    </div>
+
+    <!-- TOTALS row -->
+    <div style="display:flex;justify-content:center;gap:20px;font-size:11px;color:#9ca3af;margin-bottom:12px;flex-wrap:wrap">
+      <span><b style="color:#374151">${r.total.toLocaleString()}</b> total seconds</span>
+      <span>·</span>
+      <span><b style="color:#374151">${r.mins.toLocaleString()}</b> total minutes</span>
+      <span>·</span>
+      <span><b style="color:#374151">${r.totalHours}</b> total hours</span>
+    </div>
+
+    <!-- BREAKDOWN grid -->
+    <div class="breakdown-grid" style="grid-template-columns:repeat(4,1fr)">${breakHTML}</div>
+
+    <div style="margin-top:8px;font-size:10px;color:#9ca3af">${isMTTD?'Includes nights &amp; weekends':'Mon–Fri 08:00–20:00 · Weekends excluded · Response on weekend = raw diff'}</div>
+  </div>`;
+}
+// ── BULK ──────────────────────────────────────────────────────────────────────
+function renderBulk(metric){
+  const isMTTD=metric==='mttd';const accent=isMTTD?'#2563eb':'#0891b2';const accentBg=isMTTD?'#eff6ff':'#ecfeff';const accentBorder=isMTTD?'#bfdbfe':'#a5f3fc';
+  const b=state.bulk[metric];const label1=isMTTD?'Detection Time':'Mail Sent';const label2=isMTTD?'Ack Time':'Response Time';
+  const computed=b.rows.map(r=>{if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2))return{...r,secs:null,res:null,sla:null,err:r.t1Raw&&!r.t1?'Parse err T1':r.t2Raw&&!r.t2?'Parse err T2':null};if(r.t2<=r.t1)return{...r,secs:null,res:null,sla:null,err:'End before start'};const secs=isMTTD?calcCalSecs(r.t1,r.t2):calcBizSecs(r.t1,r.t2);return{...r,secs,res:fmtSecs(secs,!isMTTD),sla:slaStat(secs,240),err:null};});
+  let tableHTML='';
+  if(b.rows.length===0){tableHTML=`<div class="empty-state">No rows yet — import a CSV file, paste bulk data, or click + Add Row</div>`;}
+  else{const rowsHTML=computed.map((row,i)=>{let rH='<span style="color:#d1d5db">—</span>',sH='';if(row.res){rH=`<span style="color:${accent};font-weight:700;font-variant-numeric:tabular-nums">${row.res.hhmmss}</span><br/><span style="color:#6b7280;font-size:10px">${row.res.long}</span>`;sH=`<span class="sla-badge ${row.sla.cls}" style="font-size:9px;padding:2px 8px">${row.sla.label}</span>`;}else if(row.err)rH=`<span style="color:#dc2626;font-size:11px">${row.err}</span>`;return `<tr><td><span style="color:#9ca3af">${i+1}</span></td><td><input class="td-input" value="${esc(row.label||'')}" placeholder="Label" oninput="updateBulkRow('${metric}',${i},'label',this.value)" style="width:90px"/></td><td><input class="td-input" value="${esc(row.t1Raw||'')}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t1Raw',this.value)" style="width:150px;color:${row.t1?'#1a1a2e':'#9ca3af'}"/></td><td><input class="td-input" value="${esc(row.t2Raw||'')}" placeholder="paste any format" oninput="updateBulkRow('${metric}',${i},'t2Raw',this.value)" style="width:150px;color:${row.t2?'#1a1a2e':'#9ca3af'}"/></td><td><span style="color:${row.t1?'#16a34a':'#d1d5db'};font-size:11px">${row.t1?fmtShort(row.t1):'—'}</span></td><td><span style="color:${row.t2?'#16a34a':'#d1d5db'};font-size:11px">${row.t2?fmtShort(row.t2):'—'}</span></td><td>${rH}</td><td>${sH}</td><td><button class="del-btn" onclick="delBulkRow('${metric}',${i})">×</button></td></tr>`;}).join('');tableHTML=`<div class="tbl-wrap"><table><thead><tr><th>#</th><th>Label</th><th>${label1}</th><th>${label2}</th><th>Parsed T1</th><th>Parsed T2</th><th>Result</th><th>SLA</th><th></th></tr></thead><tbody>${rowsHTML}</tbody></table></div>`;}
+  const valid=computed.filter(r=>r.res);let sumHTML='';
+  if(valid.length>0){const avgS=Math.round(valid.reduce((a,r)=>a+r.secs,0)/valid.length);const mn=valid.reduce((a,r)=>r.secs<a.secs?r:a,valid[0]);const mx=valid.reduce((a,r)=>r.secs>a.secs?r:a,valid[0]);const avgR=fmtSecs(avgS,!isMTTD);const mnR=fmtSecs(mn.secs,!isMTTD);const mxR=fmtSecs(mx.secs,!isMTTD);sumHTML=`<div class="grid3" style="margin-top:12px"><div class="summary-card" style="background:${accentBg};border-color:${accentBorder}"><div class="sum-label">Avg ${isMTTD?'MTTD':'MTTR'}</div><div class="sum-value" style="color:${accent};font-variant-numeric:tabular-nums">${avgR.hhmmss}</div><div class="sum-sub" style="font-weight:600;color:#374151">${avgR.long}</div><div class="sum-sub">${valid.length} ticket${valid.length!==1?'s':''}</div></div><div class="summary-card" style="background:#f0fdf4;border-color:#bbf7d0"><div class="sum-label">Fastest</div><div class="sum-value" style="color:#16a34a;font-variant-numeric:tabular-nums">${mnR.hhmmss}</div><div class="sum-sub" style="font-weight:600;color:#374151">${mnR.long}</div><div class="sum-sub">${esc(mn.label||'—')}</div></div><div class="summary-card" style="background:#fffbeb;border-color:#fde68a"><div class="sum-label">Slowest</div><div class="sum-value" style="color:#b45309;font-variant-numeric:tabular-nums">${mxR.hhmmss}</div><div class="sum-sub" style="font-weight:600;color:#374151">${mxR.long}</div><div class="sum-sub">${esc(mx.label||'—')}</div></div></div>`;}
+  const pastePanel=b.pasteOpen?`<div class="paste-panel" style="border:1px solid ${accentBorder}"><div class="paste-header">📋 Paste Bulk Data — One row per line · Columns: ${label1}, ${label2} (tab / comma / pipe separated)</div><div class="paste-hint">Accepts any format: "3/6/2026 4:21:26 PM", "06-03-2026 16:21:26", ISO, 24h, 12h — seconds captured</div><textarea class="paste-area" id="pasteArea-${metric}" rows="5" placeholder="Examples:&#10;3/6/2026 4:21:26 PM&#9;3/6/2026 5:45:30 PM&#10;Ticket-002,3/7/2026 9:00:00 AM,3/7/2026 2:30:15 PM">${b.pasteText}</textarea><div class="paste-footer"><button onclick="applyPaste('${metric}')" class="tbtn" style="background:${accent};border-color:${accent};color:#fff">✓ Parse &amp; Add Rows</button><button onclick="closePaste('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#6b7280">Cancel</button><span class="parse-count" id="parseCount-${metric}"></span></div></div>`:'';
+  document.getElementById(`bulk-${metric}-panel`).innerHTML=`<div class="toolbar"><button onclick="triggerFileInput('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#374151">⬆ Import CSV</button><button onclick="dlTemplate('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#374151">⬇ Template CSV</button><button onclick="exportCSV('${metric}')" class="tbtn" style="background:#f5f6fa;border-color:#dde1ee;color:#374151">📤 Export Results</button><button onclick="togglePaste('${metric}')" class="tbtn" style="background:${b.pasteOpen?accent:'#f5f6fa'};border-color:${b.pasteOpen?accent:'#dde1ee'};color:${b.pasteOpen?'#fff':'#374151'}">📋 Paste Bulk Data</button><button onclick="addBulkRow('${metric}')" class="tbtn" style="background:${accentBg};border-color:${accentBorder};color:${accent};font-weight:700">+ Add Row</button>${b.rows.length>0?`<button onclick="clearBulk('${metric}')" class="tbtn" style="background:#fff1f2;border-color:#fecdd3;color:#be123c">🗑 Clear All</button>`:''}<input type="file" id="csvInput-${metric}" class="hidden" accept=".csv,.txt" onchange="handleCSVFile('${metric}',this)"/></div><div class="dropzone" id="dropzone-${metric}" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop('${metric}',event)" onclick="triggerFileInput('${metric}')"><div style="font-size:20px;margin-bottom:4px">📂</div>Drag &amp; drop CSV here · or click to browse<br/><span style="font-size:11px;color:#9ca3af">Supports Excel format (3/6/2026 4:21:26 PM) and any other date/time format</span></div>${pastePanel}${tableHTML}${sumHTML}`;
+  if(b.pasteOpen){const ta=document.getElementById(`pasteArea-${metric}`);if(ta)ta.oninput=function(){state.bulk[metric].pasteText=this.value;const cnt=parseBulkText(this.value).length;document.getElementById(`parseCount-${metric}`).textContent=cnt>0?cnt+' row'+(cnt!==1?'s':'')+' detected':'';};}
+}
+function updateBulkRow(metric,idx,field,val){const row=state.bulk[metric].rows[idx];row[field]=val;if(field==='t1Raw')row.t1=parseAnyDate(val);if(field==='t2Raw')row.t2=parseAnyDate(val);saveState();renderBulk(metric);}
+function delBulkRow(metric,idx){state.bulk[metric].rows.splice(idx,1);saveState();renderBulk(metric);}
+function addBulkRow(metric){const n=state.bulk[metric].rows.length+1;state.bulk[metric].rows.push({label:`Ticket-${String(n).padStart(3,'0')}`,t1Raw:'',t2Raw:'',t1:null,t2:null});saveState();renderBulk(metric);}
+function clearBulk(metric){if(confirm('Clear all rows?')){state.bulk[metric].rows=[];saveState();renderBulk(metric);}}
+function togglePaste(metric){state.bulk[metric].pasteOpen=!state.bulk[metric].pasteOpen;renderBulk(metric);}
+function closePaste(metric){state.bulk[metric].pasteOpen=false;state.bulk[metric].pasteText='';renderBulk(metric);}
+function applyPaste(metric){const ta=document.getElementById(`pasteArea-${metric}`);if(!ta)return;const parsed=parseBulkText(ta.value);const n=state.bulk[metric].rows.length;parsed.forEach((p,i)=>{state.bulk[metric].rows.push({label:p.label||`Ticket-${String(n+i+1).padStart(3,'0')}`,t1Raw:p.raw1,t2Raw:p.raw2,t1:p.date1,t2:p.date2});});state.bulk[metric].pasteOpen=false;state.bulk[metric].pasteText='';saveState();renderBulk(metric);}
+function parseBulkText(text){if(!text.trim())return[];return text.trim().split(/\r?\n/).filter(l=>l.trim()).map(line=>{const sep=line.includes('\t')?'\t':/[,\|;]/;const parts=line.split(sep).map(p=>p.trim().replace(/^["']+|["']+$/g,'')).filter(Boolean);if(parts.length>=2){const d1=parseAnyDate(parts[0]),d2=parseAnyDate(parts[1]);return{raw1:parts[0],raw2:parts[1],label:parts[2]||'',date1:d1,date2:d2};}return null;}).filter(Boolean);}
+function triggerFileInput(metric){document.getElementById(`csvInput-${metric}`).click();}
+function handleDrop(metric,e){e.preventDefault();document.getElementById(`dropzone-${metric}`).classList.remove('over');const f=e.dataTransfer.files[0];if(f)readFile(metric,f);}
+function handleCSVFile(metric,input){if(input.files[0])readFile(metric,input.files[0]);}
+function readFile(metric,file){const fr=new FileReader();fr.onload=e=>parseCSV(metric,e.target.result);fr.readAsText(file);}
+function splitCSVLine(line){const cols=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(c===','&&!inQ){cols.push(cur.trim());cur='';}else cur+=c;}cols.push(cur.trim());return cols;}
+function parseCSV(metric,text){
+  const raw=text.trim().replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const lines=raw.split('\n');if(lines.length<2){alert('File must have at least 2 rows (header + data)');return;}
+  const headers=splitCSVLine(lines[0]).map(h=>h.toLowerCase().replace(/^["'\s]+|["'\s]+$/g,''));
+  const isMTTD=metric==='mttd';
+  const fc=(...keys)=>{for(const k of keys){const i=headers.findIndex(h=>h.includes(k));if(i>=0)return i;}return -1;};
+  const t1i=isMTTD?fc('detect','detection','start','t1','time1','incident','from'):fc('sent','mail sent','start','t1','time1','from','dispatch');
+  const t2i=isMTTD?fc('ack','acknowledge','end','t2','time2','response','close','resolved'):fc('resp','response','end','t2','time2','to','reply','received');
+  const li=fc('label','ticket','id','name','ref','issue','#','no','sr');
+  const c1=t1i>=0?t1i:1,c2=t2i>=0?t2i:2,cl=li>=0?li:0;
+  const n=state.bulk[metric].rows.length;let added=0;
+  lines.slice(1).forEach((line,i)=>{
+    if(!line.trim())return;
+    const cols=splitCSVLine(line);
+    if(cols.every(c=>!c.trim()))return;
+    // Get raw values and strip quotes/whitespace
+    let raw1=(cols[c1]||'').trim().replace(/^["']+|["']+$/g,'');
+    let raw2=(cols[c2]||'').trim().replace(/^["']+|["']+$/g,'');
+    if(!raw1&&!raw2)return;
+    const d1=parseAnyDate(raw1);
+    const d2=parseAnyDate(raw2);
+    state.bulk[metric].rows.push({label:(cols[cl]||`Row ${n+added+1}`).trim().replace(/^["']+|["']+$/g,''),t1Raw:raw1,t2Raw:raw2,t1:d1,t2:d2});
+    added++;
+  });
+  if(added>0){saveState();renderBulk(metric);alert(`✓ Imported ${added} row${added!==1?'s':''}. Rows with unrecognised dates show "Parse err" — you can correct them inline.`);}
+  else alert('No valid rows found. Check that your CSV has datetime columns.\nExpected format example: 3/6/2026 4:21:26 PM');
+}
+function dlTemplate(metric){const isMTTD=metric==='mttd';const h1=isMTTD?'Detection Time':'Mail Sent Time';const h2=isMTTD?'Acknowledgement Time':'Mail Response Time';const csv=[`Label,${h1},${h2}`,`Ticket-001,3/6/2026 4:21:26 PM,3/6/2026 5:45:30 PM`,`Ticket-002,3/7/2026 9:00:15 AM,3/7/2026 2:30:45 PM`,`Ticket-003,06-03-2026 08:15:00,06-03-2026 11:45:20`,`Ticket-004,2026-03-09T09:00:00,2026-03-09T17:30:45`].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`${metric.toUpperCase()}_template.csv`;a.click();}
+function exportCSV(metric){const isMTTD=metric==='mttd';const h1=isMTTD?'Detection Time':'Mail Sent Time';const h2=isMTTD?'Acknowledgement Time':'Mail Response Time';const rows=state.bulk[metric].rows;const header=`Label,${h1},${h2},HH:MM:SS,Duration (Long),Total Seconds,Total Minutes,Total Hours,SLA Status`;const lines=rows.map(r=>{if(!r.t1||!r.t2||isNaN(r.t1)||isNaN(r.t2)||r.t2<=r.t1)return null;const secs=isMTTD?calcCalSecs(r.t1,r.t2):calcBizSecs(r.t1,r.t2);const res=fmtSecs(secs,!isMTTD);const sla=slaStat(secs,240);return[r.label,fmtDisplay(r.t1),fmtDisplay(r.t2),res.hhmmss,res.long,secs,res.mins,res.totalHours,sla.label].map(v=>`"${v}"`).join(',');}).filter(Boolean);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([[header,...lines].join('\n')],{type:'text/csv'}));a.download=`${metric.toUpperCase()}_results_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
+// ── TEAM ──────────────────────────────────────────────────────────────────────
+function showTeam(){const ws=JSON.parse(localStorage.getItem('sla_ws')||'{"name":"Default Team","member":"Me"}');document.getElementById('wsNameInput').value=ws.name;document.getElementById('wsMemberInput').value=ws.member;document.getElementById('teamModal').classList.remove('hidden');}
+function hideTeam(){document.getElementById('teamModal').classList.add('hidden');}
+function saveWorkspace(){const ws={name:document.getElementById('wsNameInput').value||'Default Team',member:document.getElementById('wsMemberInput').value||'Me'};localStorage.setItem('sla_ws',JSON.stringify(ws));document.getElementById('wsName').textContent=ws.name;document.getElementById('wsMember').textContent=ws.member;document.getElementById('teamMsg').innerHTML='<div class="msg msg-ok">✓ Workspace settings saved</div>';setTimeout(()=>document.getElementById('teamMsg').innerHTML='',2500);}
+function exportWS(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([localStorage.getItem('sla_bulk')||'{}'],{type:'application/json'}));a.download=`sla_workspace_${new Date().toISOString().slice(0,10)}.json`;a.click();}
+function importWS(input){const fr=new FileReader();fr.onload=e=>{try{JSON.parse(e.target.result);localStorage.setItem('sla_bulk',e.target.result);document.getElementById('teamMsg').innerHTML='<div class="msg msg-ok">✓ Workspace imported — refresh page to load data</div>';}catch{document.getElementById('teamMsg').innerHTML='<div class="msg msg-err">✗ Invalid workspace file</div>';}};fr.readAsText(input.files[0]);}
+// ── INIT ──────────────────────────────────────────────────────────────────────
+switchTab('single-mttd');
+</script>
+</body>
+</html>
