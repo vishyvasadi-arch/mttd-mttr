@@ -327,13 +327,13 @@ function calcBizSecs(start,end){
 
     const day=cur.getDay();
 
-    // Sunday — fully excluded, skip to next day midnight
+    // Sunday — fully excluded, skip to Monday 00:00
     if(day===0){
       const n=new Date(cur);n.setDate(n.getDate()+1);n.setHours(0,0,0,0);
       cur=n;continue;
     }
 
-    // Determine window for this day
+    // Determine window for this day (seconds-of-day)
     const winS = (day===6) ? SAT_S*3600 : BIZ_S*3600;
     const winE = (day===6) ? SAT_E*3600 : BIZ_E*3600;
 
@@ -343,19 +343,27 @@ function calcBizSecs(start,end){
       const fromSod = sod(cur);
       const toSod   = sod(end);
       if(toSod > winE){
-        // Response after window end → full raw diff from current position to end
-        tot += Math.max(0, toSod - fromSod);
+        // Response after window end on this day
+        // If cur is before winS (e.g. we arrived at midnight), count from winS to toSod
+        // Otherwise count from fromSod to toSod (full raw diff from where we are)
+        const effectiveFrom = Math.max(fromSod, winS);
+        tot += Math.max(0, toSod - effectiveFrom);
       } else {
-        // Response within window → count only window portion
+        // Response within or before window — count only window portion
         const a = Math.max(fromSod, winS);
         const b = Math.min(toSod,   winE);
         tot += Math.max(0, b - a);
       }
       break;
     } else {
-      // Not the last day — count window portion for this day then move on
-      const a = Math.max(sod(cur), winS);
-      tot += Math.max(0, winE - a);
+      // Not the last day — count ONLY the biz window portion for this day
+      // cur could be at midnight (00:00) when arriving from nextDay()
+      // so clamp: only count if cur is before winE, and start from max(cur, winS)
+      const curSod = sod(cur);
+      if(curSod < winE){
+        const a = Math.max(curSod, winS);
+        tot += Math.max(0, winE - a);
+      }
       cur = nextDay(cur);
     }
   }
