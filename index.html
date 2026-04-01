@@ -167,12 +167,17 @@ td{padding:7px 10px;vertical-align:middle;color:#1a1a2e}
     <div class="fmt-chips">
       <span class="fmt-chip">3/6/2026 4:21:26 PM</span>
       <span class="fmt-chip">3/6/2026 13:39:45</span>
-      <span class="fmt-chip">06-03-2026 16:21:26</span>
-      <span class="fmt-chip">2026-03-06T13:39:00</span>
-      <span class="fmt-chip">06/03/2026 04:21:26 PM</span>
-      <span class="fmt-chip">March 6 2026 4:21:26 PM</span>
-      <span class="fmt-chip">06 Mar 2026 16:21:26</span>
+      <span class="fmt-chip">05-02-2026 22:15:00</span>
+      <span class="fmt-chip">06.02.2026 04:45:00</span>
+      <span class="fmt-chip">2026-02-05T22:15:00</span>
+      <span class="fmt-chip">March 6 2026 4:21 PM</span>
+      <span class="fmt-chip">06 Feb 2026 16:21:26</span>
       <span class="fmt-chip">Unix timestamp</span>
+    </div>
+    <div style="margin-top:6px;font-size:11px;color:#6b7280">
+      <span style="color:#2563eb;font-weight:700">/ slash</span> = MM/DD/YYYY (Excel US format) &nbsp;·&nbsp;
+      <span style="color:#0891b2;font-weight:700">- dash &nbsp;or&nbsp; . dot</span> = DD-MM-YYYY (Indian / European) &nbsp;·&nbsp;
+      <span style="color:#059669;font-weight:700">YYYY-…</span> = ISO 8601
     </div>
   </div>
 </div>
@@ -208,25 +213,38 @@ function applyAP(h,ap){if(!ap)return h;const u=ap.toUpperCase();if(u==='PM'&&h<1
 function parseAnyDate(s){
   if(!s||!s.trim())return null;
   s=s.trim().replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g,'').trim();
-  // Native JS
+
+  // Native JS (handles ISO 8601 etc.)
   const n=new Date(s);
   if(!isNaN(n)&&n.getFullYear()>1970&&n.getFullYear()<2100)return n;
-  // M/D/YYYY H:MM:SS AM/PM — Excel default
-  let m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?$/i);
-  if(m){let[,p1,p2,yr,hr,mn,sc='0',ap]=m;sc=parseFloat(sc)||0;let mo,dy;if(+p1>12){dy=+p1;mo=+p2-1;}else{mo=+p1-1;dy=+p2;}return new Date(+yr,mo,dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
-  // M/D/YYYY date only
-  m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-  if(m){let[,p1,p2,yr]=m;let mo,dy;if(+p1>12){dy=+p1;mo=+p2-1;}else{mo=+p1-1;dy=+p2;}return new Date(+yr,mo,dy,0,0,0);}
-  // YYYY-MM-DD with optional time
+
+  // ── SLASH separator: M/D/YYYY — Excel US default → MONTH first ──
+  // e.g. 3/6/2026 4:21:26 PM  |  03/06/2026 16:21
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?$/i);
+  if(m){let[,mo,dy,yr,hr,mn,sc='0',ap]=m;sc=parseFloat(sc)||0;return new Date(+yr,+mo-1,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){let[,mo,dy,yr]=m;return new Date(+yr,+mo-1,+dy,0,0,0);}
+
+  // ── DASH or DOT separator: DD-MM-YYYY — European/Indian → DAY first ──
+  // e.g. 05-02-2026 22:15  |  06.02.2026 04:45
+  m=s.match(/^(\d{1,2})[\-\.](\d{1,2})[\-\.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?$/i);
+  if(m){let[,dy,mo,yr,hr,mn,sc='0',ap]=m;sc=parseFloat(sc)||0;return new Date(+yr,+mo-1,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
+  m=s.match(/^(\d{1,2})[\-\.](\d{1,2})[\-\.](\d{4})$/);
+  if(m){let[,dy,mo,yr]=m;return new Date(+yr,+mo-1,+dy,0,0,0);}
+
+  // ── YYYY-MM-DD or YYYY/MM/DD with optional time (ISO-like) ──
   m=s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?)?$/i);
   if(m){let[,yr,mo,dy,hr='0',mn='0',sc='0',ap]=m;sc=parseFloat(sc)||0;return new Date(+yr,+mo-1,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
-  // DD MMM YYYY
+
+  // ── DD MMM YYYY e.g. 06 Feb 2026 22:15 ──
   m=s.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?)?$/i);
   if(m){let[,dy,mon,yr,hr='0',mn='0',sc='0',ap]=m;sc=parseFloat(sc)||0;const mo=MONTHS[mon.toLowerCase()];if(mo!==undefined)return new Date(+yr,mo,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
-  // MMM DD YYYY
+
+  // ── MMM DD YYYY e.g. Feb 6, 2026 4:21 PM ──
   m=s.match(/^([a-z]+)\s+(\d{1,2})[,\s]+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?)?$/i);
   if(m){let[,mon,dy,yr,hr='0',mn='0',sc='0',ap]=m;sc=parseFloat(sc)||0;const mo=MONTHS[mon.toLowerCase()];if(mo!==undefined)return new Date(+yr,mo,+dy,applyAP(+hr,ap),+mn,Math.floor(sc),Math.round((sc%1)*1000));}
-  // Unix
+
+  // Unix timestamp
   if(/^\d{10}$/.test(s))return new Date(+s*1000);
   if(/^\d{13}$/.test(s))return new Date(+s);
   return null;
