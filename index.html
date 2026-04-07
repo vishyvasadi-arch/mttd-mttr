@@ -272,41 +272,39 @@ function calcBizSecs(start,end){
   const inBiz = d => !isWeekendDay(d) && sod(d)>=BIZ_S*3600 && sod(d)<BIZ_E*3600;
 
   const sentInBiz  = inBiz(start);
+  const respInBiz  = inBiz(end);
   const respOnWknd = isWeekendDay(end);
 
   // ─────────────────────────────────────────────────────────────────
-  // RULE 4: Sent on weekday off-hours AND response on weekend
-  //         → raw difference (no biz filtering at all)
+  // RULE TABLE (final):
+  //
+  //  Sent              │ Response            │ MTTR
+  // ───────────────────┼─────────────────────┼────────────────────────────
+  //  Weekday biz hrs   │ Weekday biz hrs      │ Count biz window seconds
+  //  Weekday biz hrs   │ Weekday after-hours  │ Full raw diff from sent
+  //  Weekday biz hrs   │ Weekend              │ Count biz hours until EOD, skip weekend
+  //  Weekday off-hours │ Same/next off-hours  │ 0 (no biz time elapsed)
+  //  Weekday off-hours │ Weekday biz hours    │ Count from 08:00 on response day to response
+  //  Weekday off-hours │ Weekend              │ Raw difference
   // ─────────────────────────────────────────────────────────────────
+
+  // RULE 4: Sent off-hours AND response on weekend → raw diff
   if(!sentInBiz && respOnWknd){
     return Math.round((end-start)/1000);
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // RULE 3: Sent on weekday off-hours AND response is on a weekday
-  //         (biz hours or after-hours on a weekday)
-  //         → count only Mon–Fri 08:00–20:00 biz hours from the
-  //           NEXT biz window opening after sent time, up to response
-  // ─────────────────────────────────────────────────────────────────
+  // RULE 3: Sent off-hours AND response on a weekday
   if(!sentInBiz && !respOnWknd){
-    // Find the first biz window start AFTER the sent time
-    // (could be same day at 08:00 if sent before 08:00, or next weekday 08:00)
-    let bizOpen = new Date(start);
-    // If sent before 08:00 on a weekday, open is 08:00 same day
-    if(!isWeekendDay(bizOpen) && sod(bizOpen) < BIZ_S*3600){
-      bizOpen.setHours(BIZ_S,0,0,0);
-    } else {
-      // Sent after 20:00 on weekday, or on weekend (already ruled out weekend resp above)
-      // → next weekday 08:00
-      bizOpen.setDate(bizOpen.getDate()+1);
-      bizOpen.setHours(BIZ_S,0,0,0);
-      while(isWeekendDay(bizOpen)) bizOpen.setDate(bizOpen.getDate()+1);
+    // RULE 3a: Response is ALSO off-hours on a weekday → 0
+    if(!respInBiz){
+      return 0;
     }
-    // If biz window opens after the response, 0 biz time elapsed
-    if(bizOpen >= end) return 0;
-    // Now count biz seconds from bizOpen to end (same logic as Rule 1/2 below)
-    start = bizOpen;
-    // Fall through to the day-by-day counter below
+    // RULE 3b: Response IS in biz hours
+    // Count from biz window start on response day to response time
+    const ws = new Date(end);
+    ws.setHours(BIZ_S, 0, 0, 0);
+    if(end <= ws) return 0;
+    return Math.round((end - ws) / 1000);
   }
 
   // ─────────────────────────────────────────────────────────────────
