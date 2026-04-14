@@ -258,6 +258,7 @@ const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const isSunday=d=>d.getDay()===0;
 const isSaturday=d=>d.getDay()===6;
 const isWknd=d=>d.getDay()===0||d.getDay()===6;
+const isWeekendDay=d=>d.getDay()===0||d.getDay()===6;
 function sod(d){return d.getHours()*3600+d.getMinutes()*60+d.getSeconds();}
 function isInBizWindow(d){if(isWknd(d))return false;const s=sod(d);return s>=BIZ_S*3600&&s<BIZ_E*3600;}
 function nextDay(d){const n=new Date(d);n.setDate(n.getDate()+1);n.setHours(0,0,0,0);return n;}
@@ -265,74 +266,119 @@ function nextDay(d){const n=new Date(d);n.setDate(n.getDate()+1);n.setHours(0,0,
 function calcBizSecs(start,end){
   if(!start||!end||isNaN(start)||isNaN(end)||end<=start)return 0;
 
-  // Weekend = Saturday OR Sunday (both fully excluded from biz hours)
-  const isWeekendDay = d => d.getDay()===0 || d.getDay()===6;
+  const isWkndDay  = d => d.getDay()===0||d.getDay()===6;
+  const inBizHours = d => !isWkndDay(d) && sod(d)>=BIZ_S*3600 && sod(d)<BIZ_E*3600;
 
-  // Is a date within Mon–Fri 08:00–20:00?
-  const inBiz = d => !isWeekendDay(d) && sod(d)>=BIZ_S*3600 && sod(d)<BIZ_E*3600;
+  const sentOnWknd = isWkndDay(start);
+  const sentInBiz  = inBizHours(start);
+  const respOnWknd = isWeekendDay(end);   // isWeekendDay defined above
+  const respInBiz  = inBizHours(end);
 
-  const sentInBiz  = inBiz(start);
-  const respInBiz  = inBiz(end);
-  const respOnWknd = isWeekendDay(end);
-
-  // ─────────────────────────────────────────────────────────────────
-  // RULE TABLE (final):
-  //
-  //  Sent              │ Response            │ MTTR
-  // ───────────────────┼─────────────────────┼────────────────────────────
-  //  Weekday biz hrs   │ Weekday biz hrs      │ Count biz window seconds
-  //  Weekday biz hrs   │ Weekday after-hours  │ Full raw diff from sent
-  //  Weekday biz hrs   │ Weekend              │ Count biz hours until EOD, skip weekend
-  //  Weekday off-hours │ Same/next off-hours  │ 0 (no biz time elapsed)
-  //  Weekday off-hours │ Weekday biz hours    │ Count from 08:00 on response day to response
-  //  Weekday off-hours │ Weekend              │ Raw difference
-  // ─────────────────────────────────────────────────────────────────
-
-  // RULE 4: Sent off-hours AND response on weekend → raw diff
-  if(!sentInBiz && respOnWknd){
-    return Math.round((end-start)/1000);
+  // ═══════════════════════════════════════════════════════════════════
+  // RULE 1 — Sent outside biz hours (weekday off-hours OR weekend)
+  //           AND response is outside biz hours (weekday off-hours OR weekend)
+  //           → MTTR = 0
+  // Covers:
+  //   • Sent 20:59 Mon → Response 21:18 Mon  = 0
+  //   • Sent 20:59 Mon → Response 01:18 Tue  = 0  (still off-hours next day)
+  //   • Sent Sat       → Response Sun        = 0
+  //   • Sent Sat       → Response Mon 07:00  = 0  (Mon before biz opens)
+  // ═══════════════════════════════════════════════════════════════════
+  if(!sentInBiz && !respInBiz){
+    return 0;
   }
 
-  // RULE 3: Sent off-hours AND response on a weekday
-  if(!sentInBiz && !respOnWknd){
-    // RULE 3a: Response is ALSO off-hours on a weekday → 0
-    if(!respInBiz){
-      return 0;
+  // ═══════════════════════════════════════════════════════════════════
+  // RULE 2 — Sent outside biz hours (weekday off-hours OR weekend)
+  //           AND response IS in biz hours (Mon–Fri 08:00–20:00)
+  //           → Count from 08:00 on the RESPONSE DAY to response time
+  //             PLUS full biz days of any intervening weekdays before response day
+  // Covers:
+  //   • Sent Sat 15:57 → Response Tue 13:12
+  //     = Mon full day (08:00–20:00 = 12hrs) + Tue 08:00–13:12 = 5h12m
+  //     = 17:12:00
+  //   • Sent Mon 21:00 → Response Tue 10:30
+  //     = Tue 08:00–10:30 = 02:30:00
+  //   • Sent Mon 21:00 → Response Wed 09:00
+  //     = Tue full 12hrs + Wed 08:00–09:00 = 13:00:00
+  // ═══════════════════════════════════════════════════════════════════
+  if(!sentInBiz && respInBiz){
+    // Find the first weekday AFTER sent time
+    let firstBizDay = new Date(start);
+    firstBizDay.setDate(firstBizDay.getDate()+1);
+    firstBizDay.setHours(0,0,0,0);
+    while(isWkndDay(firstBizDay)) firstBizDay.setDate(firstBizDay.getDate()+1);
+
+    let tot = 0;
+    let cur = new Date(firstBizDay);
+
+    for(let g=0; g<10000; g++){
+      if(cur >= end) break;
+      if(isWkndDay(cur)){
+        cur.setDate(cur.getDate()+1); cur.setHours(0,0,0,0); continue;
+      }
+      const isLastDay = cur.toDateString()===end.toDateString();
+      if(isLastDay){
+        // Count from 08:00 to response time
+        const toSod = sod(end);
+        const a = BIZ_S*3600;
+        const b = Math.min(toSod, BIZ_E*3600);
+        tot += Math.max(0, b - a);
+        break;
+      } else {
+        // Full biz day
+        tot += BIZ_HPD * 3600;
+        cur = nextDay(cur);
+      }
     }
-    // RULE 3b: Response IS in biz hours
-    // Count from biz window start on response day to response time
-    const ws = new Date(end);
-    ws.setHours(BIZ_S, 0, 0, 0);
-    if(end <= ws) return 0;
-    return Math.round((end - ws) / 1000);
+    return Math.round(tot);
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // RULE 1 & 2: Sent on weekday biz hours (or adjusted start above)
-  //   - Count Mon–Fri 08:00–20:00 seconds day by day
-  //   - Weekends (Sat/Sun) fully skipped
-  //   - If response is after 20:00 on response day → count full raw
-  //     diff from last biz window start on that day to response
-  //     (handles: sent in-hours, response same day after 20:00)
-  // ─────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  // RULE 3 — Sent IN biz hours AND response is on a WEEKEND
+  //           → Count biz hours from sent time until end of that week's
+  //             last business hour (Friday 20:00 or sent-day 20:00)
+  //             Do NOT count weekend time at all.
+  // Covers:
+  //   • Sent Fri 16:00 → Response Sat 10:00  = Fri 16:00–20:00 = 04:00:00
+  //   • Sent Wed 10:00 → Response Sat 12:00  = Wed 10–20 + Thu 08–20 + Fri 08–20
+  //                                           = 10 + 12 + 12 = 34:00:00
+  // ═══════════════════════════════════════════════════════════════════
+  if(sentInBiz && respOnWknd){
+    let tot = 0;
+    let cur = new Date(start);
+    for(let g=0; g<10000; g++){
+      if(isWkndDay(cur)) break; // hit weekend — stop counting
+      const curSod = sod(cur);
+      if(curSod >= BIZ_E*3600){ cur = nextDay(cur); continue; } // past 20:00 this day
+      // Count from cur to end of biz window
+      const a = Math.max(curSod, BIZ_S*3600);
+      tot += Math.max(0, BIZ_E*3600 - a);
+      cur = nextDay(cur); // move to next day at midnight
+    }
+    return Math.round(tot);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // RULE 4 — Sent IN biz hours AND response on a WEEKDAY
+  //           → Count Mon–Fri 08:00–20:00 seconds day by day
+  //           Sub-cases on response day:
+  //           a) Response within 08:00–20:00 → count up to response
+  //           b) Response after 20:00 → count up to 20:00 only (cap at biz end)
+  // ═══════════════════════════════════════════════════════════════════
   let tot = 0;
   let cur = new Date(start);
 
   for(let g=0; g<10000; g++){
     if(cur >= end) break;
-
     const day = cur.getDay();
 
-    // Skip Saturday and Sunday entirely
-    if(day===0 || day===6){
-      const n = new Date(cur);
-      n.setDate(n.getDate()+1);
-      n.setHours(0,0,0,0);
-      cur = n;
-      continue;
+    // Skip weekends
+    if(day===0||day===6){
+      const n=new Date(cur); n.setDate(n.getDate()+1); n.setHours(0,0,0,0);
+      cur=n; continue;
     }
 
-    // Weekday window: 08:00–20:00
     const winS = BIZ_S*3600;
     const winE = BIZ_E*3600;
     const isLastDay = cur.toDateString()===end.toDateString();
@@ -340,20 +386,12 @@ function calcBizSecs(start,end){
     if(isLastDay){
       const fromSod = sod(cur);
       const toSod   = sod(end);
-      if(toSod > winE){
-        // Response after 20:00 on this day
-        // Count from effective biz start to response (raw diff for after-hours portion)
-        const effectiveFrom = Math.max(fromSod, winS);
-        tot += Math.max(0, toSod - effectiveFrom);
-      } else {
-        // Response within 08:00–20:00 — count only that window portion
-        const a = Math.max(fromSod, winS);
-        const b = Math.min(toSod,   winE);
-        tot += Math.max(0, b - a);
-      }
+      // Cap response at 20:00 — do not count after-hours on response day
+      const a = Math.max(fromSod, winS);
+      const b = Math.min(toSod, winE);
+      tot += Math.max(0, b - a);
       break;
     } else {
-      // Not the last day — count only the biz window for this day
       const curSod = sod(cur);
       if(curSod < winE){
         const a = Math.max(curSod, winS);
