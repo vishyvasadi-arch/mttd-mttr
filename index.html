@@ -281,35 +281,52 @@ function calcBizSecs(start,end){
   //     e.g. Sent Mon 20:59 → Response Mon 21:18 = 0
   //     e.g. Sent Mon 20:59 → Response Tue 01:18 (next day still off) = 0
   //
-  //  b) DIFFERENT DAYS, weekdays in between → count full biz days between them
+  //  b) DIFFERENT DAYS — count full biz days from day-after-sent UP TO AND
+  //     INCLUDING response day (if it's a weekday, it counts as a full day
+  //     since business hours 08:00–20:00 fully elapsed before the off-hours response)
   //     e.g. Sent Wed 20:45 → Response Thu 20:23
-  //          = Thu full business day 08:00–20:00 = 12:00:00
+  //          Thu biz day fully passed (08:00–20:00) = 12:00:00
   //     e.g. Sent Mon 21:00 → Response Wed 21:00
-  //          = Tue full 12h + Wed full 12h = 24:00:00
+  //          Tue full 12h + Wed full 12h = 24:00:00
+  //     e.g. Sent Mon 20:59 → Response Tue 01:18
+  //          Tue 01:18 is BEFORE biz opens → 0
   //
-  //  c) Weekend sent OR response with no weekdays between → 0
+  //  c) Weekend days → skipped (not counted)
   //     e.g. Sent Sat → Response Sun = 0
-  //     e.g. Sent Sat → Response Mon 07:00 (before biz opens) = 0
+  //     e.g. Sent Sat → Response Mon 07:00 = 0
   // ═══════════════════════════════════════════════════════════════════
   if(!sentInBiz && !respInBiz){
     // Same calendar day → always 0
     if(start.toDateString() === end.toDateString()) return 0;
 
-    // Different days — count full biz days of any weekdays strictly between
-    // start-day (exclusive) and end-day (exclusive)
+    // Response is before biz window opens on its day (e.g. 01:18 AM) → 0
+    // because the business day on the response day hasn't happened yet
+    if(!isWkndDay(end) && sod(end) < BIZ_S*3600) return 0;
+
+    // Count full biz days from the day after sent, up to and including response day
+    // Each weekday counts as a full 12-hour biz day ONLY if:
+    //   - It is before response day: biz hours fully passed
+    //   - It IS response day AND response time >= 20:00: biz hours fully passed
     let tot = 0;
     let cur = new Date(start);
     cur.setDate(cur.getDate()+1);
     cur.setHours(0,0,0,0);
 
     for(let g=0; g<10000; g++){
-      // Stop when we reach the response day (don't count partial response day
-      // since response is off-hours)
-      if(cur.toDateString()===end.toDateString()) break;
       if(cur > end) break;
-      // Count this day only if it's a weekday
       if(!isWkndDay(cur)){
-        tot += BIZ_HPD * 3600; // full 12-hour business day
+        const isRespDay = cur.toDateString()===end.toDateString();
+        if(isRespDay){
+          // Response day: biz fully passed only if response is at or after 20:00
+          if(sod(end) >= BIZ_E*3600){
+            tot += BIZ_HPD * 3600;
+          }
+          // If response is between 08:00-20:00 that's Rule 2 (handled separately)
+          // If before 08:00 already returned 0 above
+          break;
+        } else {
+          tot += BIZ_HPD * 3600; // full biz day passed
+        }
       }
       cur.setDate(cur.getDate()+1);
     }
