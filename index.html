@@ -275,17 +275,45 @@ function calcBizSecs(start,end){
   const respInBiz  = inBizHours(end);
 
   // ═══════════════════════════════════════════════════════════════════
-  // RULE 1 — Sent outside biz hours (weekday off-hours OR weekend)
-  //           AND response is outside biz hours (weekday off-hours OR weekend)
-  //           → MTTR = 0
-  // Covers:
-  //   • Sent 20:59 Mon → Response 21:18 Mon  = 0
-  //   • Sent 20:59 Mon → Response 01:18 Tue  = 0  (still off-hours next day)
-  //   • Sent Sat       → Response Sun        = 0
-  //   • Sent Sat       → Response Mon 07:00  = 0  (Mon before biz opens)
+  // RULE 1 — Sent outside biz hours AND response outside biz hours
+  //
+  //  a) SAME DAY both off-hours → 0
+  //     e.g. Sent Mon 20:59 → Response Mon 21:18 = 0
+  //     e.g. Sent Mon 20:59 → Response Tue 01:18 (next day still off) = 0
+  //
+  //  b) DIFFERENT DAYS, weekdays in between → count full biz days between them
+  //     e.g. Sent Wed 20:45 → Response Thu 20:23
+  //          = Thu full business day 08:00–20:00 = 12:00:00
+  //     e.g. Sent Mon 21:00 → Response Wed 21:00
+  //          = Tue full 12h + Wed full 12h = 24:00:00
+  //
+  //  c) Weekend sent OR response with no weekdays between → 0
+  //     e.g. Sent Sat → Response Sun = 0
+  //     e.g. Sent Sat → Response Mon 07:00 (before biz opens) = 0
   // ═══════════════════════════════════════════════════════════════════
   if(!sentInBiz && !respInBiz){
-    return 0;
+    // Same calendar day → always 0
+    if(start.toDateString() === end.toDateString()) return 0;
+
+    // Different days — count full biz days of any weekdays strictly between
+    // start-day (exclusive) and end-day (exclusive)
+    let tot = 0;
+    let cur = new Date(start);
+    cur.setDate(cur.getDate()+1);
+    cur.setHours(0,0,0,0);
+
+    for(let g=0; g<10000; g++){
+      // Stop when we reach the response day (don't count partial response day
+      // since response is off-hours)
+      if(cur.toDateString()===end.toDateString()) break;
+      if(cur > end) break;
+      // Count this day only if it's a weekday
+      if(!isWkndDay(cur)){
+        tot += BIZ_HPD * 3600; // full 12-hour business day
+      }
+      cur.setDate(cur.getDate()+1);
+    }
+    return Math.round(tot);
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -294,23 +322,28 @@ function calcBizSecs(start,end){
   //           → Count from 08:00 on the RESPONSE DAY to response time
   //             PLUS full biz days of any intervening weekdays before response day
   // Covers:
-  //   • Sent Sat 15:57 → Response Tue 13:12
-  //     = Mon full day (08:00–20:00 = 12hrs) + Tue 08:00–13:12 = 5h12m
-  //     = 17:12:00
-  //   • Sent Mon 21:00 → Response Tue 10:30
-  //     = Tue 08:00–10:30 = 02:30:00
-  //   • Sent Mon 21:00 → Response Wed 09:00
-  //     = Tue full 12hrs + Wed 08:00–09:00 = 13:00:00
+  //   • Sent Wed 02:19 → Response Wed 10:48  = Wed 08:00–10:48 = 02:48:00
+  //   • Sent Sat 15:57 → Response Tue 13:12  = Mon full (12h) + Tue 08:00–13:12 = 17:12:00
+  //   • Sent Mon 21:00 → Response Tue 10:30  = Tue 08:00–10:30 = 02:30:00
+  //   • Sent Mon 21:00 → Response Wed 09:00  = Tue full 12hrs + Wed 08:00–09:00 = 13:00:00
   // ═══════════════════════════════════════════════════════════════════
   if(!sentInBiz && respInBiz){
-    // Find the first weekday AFTER sent time
-    let firstBizDay = new Date(start);
-    firstBizDay.setDate(firstBizDay.getDate()+1);
-    firstBizDay.setHours(0,0,0,0);
-    while(isWkndDay(firstBizDay)) firstBizDay.setDate(firstBizDay.getDate()+1);
+
+    // ── SAME DAY: sent off-hours before 08:00, response same day in biz ──
+    if(start.toDateString() === end.toDateString()){
+      const toSod = sod(end);
+      return Math.max(0, Math.round(toSod - BIZ_S*3600));
+    }
+
+    // ── DIFFERENT DAY: find first weekday on or after the day AFTER sent ──
+    // Start counting from the next calendar day at 00:00
+    let cur = new Date(start);
+    cur.setDate(cur.getDate()+1);
+    cur.setHours(0,0,0,0);
+    // Skip weekends
+    while(isWkndDay(cur)) cur.setDate(cur.getDate()+1);
 
     let tot = 0;
-    let cur = new Date(firstBizDay);
 
     for(let g=0; g<10000; g++){
       if(cur >= end) break;
@@ -321,9 +354,8 @@ function calcBizSecs(start,end){
       if(isLastDay){
         // Count from 08:00 to response time
         const toSod = sod(end);
-        const a = BIZ_S*3600;
         const b = Math.min(toSod, BIZ_E*3600);
-        tot += Math.max(0, b - a);
+        tot += Math.max(0, b - BIZ_S*3600);
         break;
       } else {
         // Full biz day
